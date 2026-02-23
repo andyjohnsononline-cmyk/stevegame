@@ -54,12 +54,12 @@ Beyond the office, Steve can explore a curated map of Amsterdam neighborhoods, e
 
 | Location | Purpose |
 |---|---|
-| Jordaan Canals | Walking routes for one-on-one conversations with filmmakers. Relationship-building scenes trigger here. |
+| Brown Café ('t Smalle) | The executive social hub adjacent to Steve's houseboat. Streaming company executives gather here for borrels and industry gossip. Steve's first stop after leaving home. Connects to the canals outside. |
+| Jordaan Canals | Walking routes for one-on-one conversations with filmmakers. Relationship-building scenes trigger here. Includes a smoking area by the water where Steve can take a break. Accessible from the café. |
 | Vondelpark | Weekend relaxation spot. Restores Steve's creative energy. Seasonal events held here. |
 | De Pijp Market | Buy gifts for filmmakers and colleagues. Each character has preferred gifts that boost relationships. |
 | Leidseplein Cinemas | Watch competitors' releases. Provides insight into market trends and audience preferences. |
-| Brown Cafés | Multiple venues for after-work drinks. Different cafés attract different filmmaker archetypes. |
-| Steve's Apartment | Houseboat on the Prinsengracht. Customisable interior. Rest here to end the day. |
+| Steve's Apartment | Houseboat on the Prinsengracht. Customisable interior. Rest here to end the day. Exit leads directly to the café. |
 
 ### 3.3 Seasons & Time
 
@@ -171,6 +171,8 @@ Starting in Year 2, Steve can submit completed projects to fictional equivalents
 
 Steve's houseboat apartment on the Prinsengracht serves as the Stardew farmhouse equivalent. It starts small and spartan, and the player can gradually upgrade and decorate it. Furniture, art, and personal items can be purchased at De Pijp Market or received as gifts from NPCs. Certain decorations provide passive gameplay bonuses: a good bookshelf increases reading speed, art from a filmmaker friend improves relationship maintenance, a high-end coffee machine boosts morning energy.
 
+Stepping outside the houseboat leads directly into the Brown Café ('t Smalle), the social hub where streaming company executives congregate. From the café, Steve can head outside to the Jordaan Canals for walks, smoke breaks, and access to the rest of Amsterdam.
+
 ### 7.4 Random Events & Crises
 
 The game regularly introduces unpredictable events that disrupt routine and demand creative problem-solving: a lead actor drops out mid-production; a script leaks online and causes a PR crisis; a filmmaker has a creative breakthrough that requires budget reallocation; a competing streamer announces a suspiciously similar project; a Dutch cycling strike makes getting to the office an adventure. These events keep the simulation from becoming rote and create emergent storytelling moments.
@@ -207,7 +209,11 @@ Recommended engine is Godot 4 or Unity, both well-proven for 2D simulation games
 
 End-of-day autosave with three manual save slots. Save data captures full world state including all relationship values, project pipeline states, reputation scores, calendar progress, apartment customisation, and procedural script generation seeds.
 
-### 9.4 Estimated Scope
+### 9.4 How to Play Guide
+
+The main menu includes a "How to Play" screen accessible before starting or continuing a game. It covers controls (movement, interaction, inbox, pause), the core gameplay loop (reading scripts, giving notes, building relationships), an explanation of the Notes Triangle, a summary of all explorable locations, and practical tips for energy and time management. This ensures new players can learn the game's systems without requiring an in-game tutorial sequence.
+
+### 9.5 Estimated Scope
 
 | Metric | Estimate |
 |---|---|
