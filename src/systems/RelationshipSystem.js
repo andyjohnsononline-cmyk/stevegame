@@ -27,48 +27,17 @@ export class RelationshipSystem {
     this.scene.events?.emit('relationship-changed', { npcId, hearts: gs.relationships[npcId] });
   }
 
-  getThreshold(npcId) {
-    const hearts = this.getHearts(npcId);
-    if (hearts < 2) return 0;
-    if (hearts < 5) return 1;
-    if (hearts < 8) return 2;
-    return 3;
-  }
-
-  canGift(npcId) {
-    const gs = this.scene.gameState;
-    if (!gs?.flags?.giftedToday) return true;
-    return !gs.flags.giftedToday[npcId];
-  }
-
-  giveGift(npcId, giftName) {
-    const gs = this.scene.gameState;
-    if (!gs) return 'Cannot gift.';
-    if (!this.canGift(npcId)) return 'Already gifted today.';
-
-    const character = CHARACTERS.find(c => c.id === npcId);
-    const preferred = character?.preferredGiftType === giftName;
-    const amount = preferred ? 2 : 1;
-    this.addHearts(npcId, amount);
-
-    if (!gs.flags) gs.flags = {};
-    if (!gs.flags.giftedToday) gs.flags.giftedToday = {};
-    gs.flags.giftedToday[npcId] = true;
-
-    return preferred ? 'They loved it! (+2 hearts)' : 'They appreciated it. (+1 heart)';
-  }
-
   getDialogue(npcId, type) {
     const character = CHARACTERS.find(c => c.id === npcId);
     if (!character?.dialoguePool) return '...';
 
-    const threshold = this.getThreshold(npcId);
+    const hearts = this.getHearts(npcId);
     let pool = character.dialoguePool[type] ?? character.dialoguePool.casual;
 
-    if (threshold >= 3 && character.dialoguePool.special) {
+    if (hearts >= 8 && character.dialoguePool.special) {
       pool = [...(character.dialoguePool.special ?? []), ...(pool ?? [])];
     }
-    if (threshold === 0 && character.dialoguePool.upset) {
+    if (hearts < 2 && character.dialoguePool.upset) {
       pool = [...(character.dialoguePool.upset ?? []), ...(pool ?? [])];
     }
 
@@ -76,10 +45,10 @@ export class RelationshipSystem {
     return lines[Math.floor(Math.random() * lines.length)] ?? '...';
   }
 
-  getNPCsAtLocation(locationId, timePeriod) {
-    return CHARACTERS.filter(c => {
-      const schedule = c.schedule ?? {};
-      return schedule[timePeriod] === locationId;
-    });
+  getNPCsAtLocation(locationId) {
+    if (locationId === 'cafe') {
+      return CHARACTERS.filter(c => c.role === 'filmmaker' || c.role === 'colleague');
+    }
+    return [];
   }
 }
