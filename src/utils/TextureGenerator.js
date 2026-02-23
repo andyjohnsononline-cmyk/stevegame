@@ -343,6 +343,8 @@ export class TextureGenerator {
       ['npc_pieter', 0x795548, 0xFFCBA4, 0xFF8F00],
       ['npc_sophie', 0x4E342E, 0xFFDBAC, 0xC62828],
       ['npc_oliver', 0x6D4C41, 0xFFE0B2, 0x455A64],
+      ['npc_anouk', 0x8B4513, 0xE8D4C4, 0x4682B4],
+      ['npc_tomas', 0x2C1810, 0xD4A574, 0x8B0000],
     ];
     for (const [id, hair, skin, shirt] of npcs) {
       TextureGenerator.generateCharacterFrames(scene, id, hair, skin, shirt);

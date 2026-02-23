@@ -744,6 +744,142 @@ export const CHARACTERS = [
       shirt: '#2c3e50',
     },
   },
+  // 11. Anouk Visser - Junior Executive (mentee)
+  {
+    id: 'anouk',
+    type: 'junior_exec',
+    notePreference: 'balanced',
+    name: 'Anouk Visser',
+    role: 'mentee',
+    archetype: 'junior_exec',
+    nationality: 'Dutch',
+    personality: 'Eager, analytical, occasionally overthinks. Wants to prove herself but respects hierarchy. First job in content.',
+    creativePhilosophy: null,
+    preferredGiftType: 'coffee',
+    preferredTone: 'balanced',
+    defaultLocation: 'office_upper',
+    schedule: {
+      morning: 'office_upper',
+      afternoon: 'office_upper',
+      evening: 'office_ground',
+    },
+    dialoguePool: {
+      greeting: [
+        'Steve! Do you have a minute? I could use your perspective on something.',
+        'Hey Steve. I\'m working through a coverage report and I\'m stuck. Can I ask you something?',
+        'Oh good, you\'re here. I was hoping to pick your brain.',
+        'Steve! Sorry to bother you. I have a question about a script on my desk.',
+      ],
+      casual: [
+        'I stayed up until 2am reading scripts. Is that normal? Please say yes.',
+        'Bernie said I should watch more European cinema. Any recommendations?',
+        'I\'m trying to figure out how you decide which scripts to champion. It seems like instinct.',
+        'The filmmakers are... intense. Is that a them thing or an industry thing?',
+      ],
+      heartTwo: [
+        'Your advice on that coverage was really helpful. The filmmaker actually thanked me.',
+        'I\'m starting to understand the notes triangle. I think. Maybe.',
+        'People are starting to take me seriously in meetings. I think that\'s partly your influence.',
+      ],
+      heartFive: [
+        'I greenlit my first project! It\'s terrifying and exhilarating.',
+        'Bernie mentioned you\'ve been saying good things about my work. Thank you.',
+        'I finally gave difficult notes without the filmmaker walking out. Progress!',
+      ],
+      heartEight: [
+        'I got offered a job at a competitor. I turned it down. This team is where I want to be.',
+        'I want to be the kind of executive you are. I hope that\'s not weird to say.',
+      ],
+      pleased: [
+        'I greenlit my first project! It\'s terrifying and exhilarating.',
+        'Bernie mentioned you\'ve been saying good things about my work. Thank you.',
+      ],
+      special: [
+        'I got offered a job at a competitor. I turned it down. This team is where I want to be.',
+      ],
+      upset: [
+        'I thought you\'d have more time for me. I know you\'re busy, but still.',
+        'The notes you suggested I give... they didn\'t land well. I need better guidance.',
+      ],
+      about: [
+        'Amsterdam born and raised. First person in my family to work in entertainment.',
+        'I studied film theory at UvA. Turns out the job is 80% email and 20% cinema.',
+      ],
+    },
+    portraitColors: {
+      hair: '#8B4513',
+      skin: '#e8d4c4',
+      shirt: '#4682B4',
+    },
+  },
+  // 12. Tomás Ferreira - Junior Executive (mentee)
+  {
+    id: 'tomas',
+    type: 'junior_exec',
+    notePreference: 'direct',
+    name: 'Tomás Ferreira',
+    role: 'mentee',
+    archetype: 'junior_exec',
+    nationality: 'Portuguese',
+    personality: 'Confident, sometimes brash, strong instincts but needs refinement. Came from a film festival background.',
+    creativePhilosophy: null,
+    preferredGiftType: 'art_prints',
+    preferredTone: 'direct',
+    defaultLocation: 'office_upper',
+    schedule: {
+      morning: 'office_ground',
+      afternoon: 'office_upper',
+      evening: 'cafe',
+    },
+    dialoguePool: {
+      greeting: [
+        'Steve. Got a second? I need a reality check on something.',
+        'Hey, perfect timing. I\'m about to make a call and I want your take first.',
+        'Steve. Quick one. I\'ve got a script situation and I trust your judgement.',
+        'Oh good. I was going to email you but this is faster.',
+      ],
+      casual: [
+        'I ran a festival in Lisbon before this. Different world. Fewer spreadsheets.',
+        'The data team keeps sending me completion rate reports. I miss when films just... existed.',
+        'I think I\'m developing an instinct for scripts. Or maybe that\'s just confidence.',
+        'Jake Morrison gave me some advice yesterday. Mostly about money. Very on-brand.',
+      ],
+      heartTwo: [
+        'Your mentoring style is good. Direct without being harsh. I\'m learning.',
+        'I passed on a script you would have passed on too. Felt right.',
+        'I\'m getting better at reading the room in meetings. Thanks for the coaching.',
+      ],
+      heartFive: [
+        'My first release got decent numbers. Nothing huge, but I\'ll take it.',
+        'I stood up to a filmmaker who was pushing back on notes. It worked. Your advice helped.',
+        'Bernie\'s starting to include me in strategy conversations. That\'s new.',
+      ],
+      heartEight: [
+        'I want to run my own division someday. I think working with you will get me there.',
+        'A filmmaker dedicated their film to "everyone who believed early." I\'d like to think that includes us.',
+      ],
+      pleased: [
+        'My first release got decent numbers. Nothing huge, but I\'ll take it.',
+        'I stood up to a filmmaker who was pushing back on notes. It worked.',
+      ],
+      special: [
+        'I want to run my own division someday. I think working with you will get me there.',
+      ],
+      upset: [
+        'I took your advice and it backfired. Maybe I should have trusted my gut.',
+        'I need more support. I\'m drowning a bit here.',
+      ],
+      about: [
+        'Lisbon, then Rotterdam, now Amsterdam. I follow the industry where it goes.',
+        'I think the best executives combine gut and data. I\'m still figuring out the ratio.',
+      ],
+    },
+    portraitColors: {
+      hair: '#2c1810',
+      skin: '#d4a574',
+      shirt: '#8B0000',
+    },
+  },
 ];
 
 export function getCharacter(id) {

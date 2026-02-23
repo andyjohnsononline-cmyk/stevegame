@@ -12,7 +12,7 @@ export const LOCATIONS = {
     interactables: [
       { x: 9, y: 2, type: 'bed', action: 'sleep', label: 'Bed (Sleep & Save)' },
       { x: 2, y: 2, type: 'coffee_machine', action: 'make_coffee', label: 'Coffee Machine' },
-      { x: 5, y: 3, type: 'phone', action: 'check_phone', label: 'Phone (Check Inbox)' },
+      { x: 5, y: 3, type: 'phone', action: 'check_phone', label: 'Phone (Check Email)' },
       { x: 5, y: 5, type: 'desk', action: 'read_scripts', label: "Steve's Desk" },
       { x: 3, y: 7, type: 'bookshelf', action: 'browse', label: 'Bookshelf' },
     ],
@@ -91,6 +91,7 @@ export const LOCATIONS = {
       { type: 'desk', x: 6, y: 4, action: 'browse', label: 'Colleague desk' },
       { type: 'desk', x: 8, y: 7, action: 'browse', label: 'Colleague desk' },
       { type: 'desk', x: 12, y: 3, action: 'browse', label: "Bernie's office" },
+      { type: 'meeting', x: 11, y: 8, action: 'attend_meeting', label: 'Meeting Room' },
     ],
     npcSpots: [
       { x: 4, y: 6 },
