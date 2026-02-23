@@ -9,9 +9,11 @@ import { RelationshipSystem } from '../systems/RelationshipSystem.js';
 import { CareerSystem } from '../systems/CareerSystem.js';
 import { PipelineSystem } from '../systems/PipelineSystem.js';
 import { EventSystem } from '../systems/EventSystem.js';
+import { EmailSystem } from '../systems/EmailSystem.js';
 import { SaveSystem } from '../utils/SaveSystem.js';
 import { LOCATIONS, getLocation } from '../data/locationData.js';
 import { CHARACTERS } from '../data/characterData.js';
+import { pickMeetingScenario, MENTEE_PROMPTS } from '../data/meetingData.js';
 import { PALETTE } from '../utils/TextureGenerator.js';
 
 const TILE = 32;
@@ -79,10 +81,15 @@ export class GameScene extends Phaser.Scene {
     this.careerSystem = new CareerSystem(this);
     this.pipelineSystem = new PipelineSystem(this);
     this.eventSystem = new EventSystem();
+    this.emailSystem = new EmailSystem(this);
 
     if (!this.gameState.inbox) this.gameState.inbox = [];
     if (this.gameState.inbox.length === 0) {
       this.scriptEngine.populateInbox(3);
+    }
+
+    if (!this.gameState.seasonStartReputation) {
+      this.careerSystem.snapshotReputation();
     }
 
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -223,7 +230,14 @@ export class GameScene extends Phaser.Scene {
     this.npcs = [];
 
     const timePeriod = this.timeSystem.getTimePeriod();
-    const npcsHere = this.relationshipSystem.getNPCsAtLocation(this.gameState.currentLocation, timePeriod);
+    let npcsHere = this.relationshipSystem.getNPCsAtLocation(this.gameState.currentLocation, timePeriod);
+
+    // Filter out mentee NPCs unless player is Director level (3) or above
+    const careerLevel = this.gameState.careerLevel ?? 0;
+    if (careerLevel < 3) {
+      npcsHere = npcsHere.filter(c => c.role !== 'mentee');
+    }
+
     const spots = this.currentLocation?.npcSpots ?? [];
 
     npcsHere.forEach((charData, i) => {
@@ -510,7 +524,15 @@ export class GameScene extends Phaser.Scene {
   // ========== DIALOGUE & INTERACTIONS ==========
 
   startDialogue(npc) {
+    const charData = npc.getCharacterData();
     const hearts = this.relationshipSystem.getHearts(npc.characterId);
+
+    // Mentee NPCs: 50% chance of mentoring dilemma (if player has energy)
+    if (charData?.role === 'mentee' && Math.random() < 0.5 && this.energySystem.canAfford('socialize')) {
+      this.startMentoringSession(npc);
+      return;
+    }
+
     const dialogue = npc.getDialogue(hearts);
     if (!dialogue) return;
 
@@ -521,9 +543,38 @@ export class GameScene extends Phaser.Scene {
     this.scene.launch('DialogueScene', {
       gameScene: this,
       mode: 'dialogue',
-      speakerName: npc.getCharacterData().name,
+      speakerName: charData.name,
       text: dialogue,
       characterId: npc.characterId,
+    });
+  }
+
+  startMentoringSession(npc) {
+    const charData = npc.getCharacterData();
+    const scenario = pickMeetingScenario('mentoring');
+    if (!scenario) {
+      this.startDialogue(npc);
+      return;
+    }
+
+    const promptTemplate = MENTEE_PROMPTS[Math.floor(Math.random() * MENTEE_PROMPTS.length)];
+    const mentoringScenario = {
+      ...scenario,
+      speaker: charData.name,
+      steps: scenario.steps.map(step => ({
+        ...step,
+        prompt: step.prompt ?? promptTemplate(charData.name.split(' ')[0]),
+      })),
+    };
+
+    this.relationshipSystem.addHearts(npc.characterId, 0.3);
+    this.timePaused = true;
+    this.player.setInUI(true);
+
+    this.scene.launch('DialogueScene', {
+      gameScene: this,
+      mode: 'meeting',
+      meeting: mentoringScenario,
     });
   }
 
@@ -531,11 +582,12 @@ export class GameScene extends Phaser.Scene {
     switch (obj.action) {
       case 'sleep': this.handleSleep(); break;
       case 'make_coffee': this.handleCoffee(); break;
-      case 'check_phone':
+      case 'check_phone': this.openEmail(); break;
       case 'read_scripts':
       case 'work': this.openInbox(); break;
       case 'buy_gift': this.openGiftShop(); break;
       case 'order_drink': this.handleDrink(); break;
+      case 'attend_meeting': this.handleMeeting(); break;
       case 'sit': this.showMessage(this._flavorText('sit')); break;
       case 'admire': this.showMessage(this._flavorText('admire')); break;
       case 'browse': this.showMessage(this._flavorText('browse')); break;
@@ -592,6 +644,36 @@ export class GameScene extends Phaser.Scene {
     this.showMessage(lines[Math.floor(Math.random() * lines.length)]);
   }
 
+  handleMeeting() {
+    const gs = this.gameState;
+    const pending = gs.pendingMeetings ?? [];
+
+    if (pending.length === 0) {
+      this.showMessage('No meetings scheduled. Check your email.');
+      return;
+    }
+
+    if (!this.energySystem.canAfford('meeting')) {
+      this.showMessage('Too tired for a meeting right now.');
+      return;
+    }
+
+    const meetingType = pending[0];
+    const scenario = pickMeetingScenario(meetingType);
+    if (!scenario) {
+      this.showMessage('No meetings available right now.');
+      return;
+    }
+
+    this.timePaused = true;
+    this.player?.setInUI(true);
+    this.scene.launch('DialogueScene', {
+      gameScene: this,
+      mode: 'meeting',
+      meeting: scenario,
+    });
+  }
+
   openInbox() {
     if (this.travelMapOpen) return;
     if (this.scene.isActive('DialogueScene')) return;
@@ -600,6 +682,17 @@ export class GameScene extends Phaser.Scene {
     this.scene.launch('DialogueScene', {
       gameScene: this,
       mode: 'inbox',
+    });
+  }
+
+  openEmail() {
+    if (this.travelMapOpen) return;
+    if (this.scene.isActive('DialogueScene')) return;
+    this.timePaused = true;
+    this.player?.setInUI(true);
+    this.scene.launch('DialogueScene', {
+      gameScene: this,
+      mode: 'email',
     });
   }
 
@@ -648,6 +741,40 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.scriptEngine.populateInbox(Math.random() < 0.6 ? 1 : 2);
+
+    this.emailSystem.generateDailyEmails();
+
+    // Quarterly slate review on day 28 (last day of season)
+    if (gs.day === 28) {
+      const review = this.careerSystem.generateSlateReview();
+      if (review) {
+        const promoted = this.careerSystem.checkPromotion();
+        review.promotionReady = promoted;
+        this.time.delayedCall(2500, () => {
+          this.timePaused = true;
+          this.player?.setInUI(true);
+          this.scene.launch('DialogueScene', {
+            gameScene: this,
+            mode: 'slate_review',
+            review,
+          });
+        });
+      }
+    }
+
+    // Snapshot reputation at season start for review deltas
+    if (gs.day === 1) {
+      this.careerSystem.snapshotReputation();
+    }
+
+    // Auto-schedule strategy session on day 1 of each season (except the very first day)
+    if (gs.day > 1 && ((gs.day - 1) % 28 === 0)) {
+      if (!gs.pendingMeetings) gs.pendingMeetings = [];
+      if (!gs.pendingMeetings.includes('strategy_session')) {
+        gs.pendingMeetings.push('strategy_session');
+        this.showMessage('Quarterly strategy session scheduled. Head to the meeting room.');
+      }
+    }
 
     const event = this.eventSystem.checkForEvent(gs);
     if (event) {

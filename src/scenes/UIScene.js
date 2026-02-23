@@ -24,6 +24,15 @@ export class UIScene extends Phaser.Scene {
     this.moneyText = this.add.text(620, 8, '', style).setDepth(1);
     this.careerText = this.add.text(740, 8, '', { ...style, color: '#D4721A' }).setDepth(1);
 
+    this.emailBadge = this.add.text(935, 8, '', {
+      fontSize: '11px', fontFamily: 'monospace', color: '#FFFFFF',
+      backgroundColor: '#C0392B', padding: { left: 4, right: 4, top: 1, bottom: 1 },
+    }).setDepth(3).setOrigin(1, 0).setVisible(false);
+
+    this.meetingIndicator = this.add.text(935, 24, '', {
+      fontSize: '9px', fontFamily: 'monospace', color: '#FFD700',
+    }).setDepth(3).setOrigin(1, 0).setVisible(false);
+
     this.controlsText = this.add.text(480, 625, 'ARROWS/WASD: Move | SPACE: Interact | TAB: Inbox | ESC: Menu', {
       fontSize: '10px', fontFamily: 'monospace', color: '#666688',
     }).setOrigin(0.5).setDepth(1);
@@ -65,5 +74,19 @@ export class UIScene extends Phaser.Scene {
 
     this.moneyText.setText(`$${gs.money ?? 0}`);
     this.careerText.setText(this.gameScene.careerSystem?.getTitle() ?? 'Junior Executive');
+
+    const unreadEmails = this.gameScene.emailSystem?.getUnreadCount() ?? 0;
+    if (unreadEmails > 0) {
+      this.emailBadge.setText(`\u2709 ${unreadEmails}`).setVisible(true);
+    } else {
+      this.emailBadge.setVisible(false);
+    }
+
+    const pendingMeetings = gs.pendingMeetings?.length ?? 0;
+    if (pendingMeetings > 0) {
+      this.meetingIndicator.setText(`\u25B6 ${pendingMeetings} meeting(s)`).setVisible(true);
+    } else {
+      this.meetingIndicator.setVisible(false);
+    }
   }
 }

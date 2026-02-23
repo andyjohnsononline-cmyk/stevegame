@@ -35,6 +35,7 @@ export class PipelineSystem {
     if (daysElapsed >= duration) {
       script.stage = this.stages[idx + 1];
       script.stageStartDay = currentDay;
+      script._stageAdvancedToday = true;
       this.scene.events?.emit('script-advanced', { script, stage: script.stage });
       return true;
     }
@@ -66,10 +67,13 @@ export class PipelineSystem {
     const scriptEngine = this.scene.scriptEngine;
     const careerSystem = this.scene.careerSystem;
 
+    script.releasedSeason = gs.season ?? 0;
+    script.releasedYear = gs.year ?? 1;
     const avgQuality = scriptEngine?.getAverageQuality(script) ?? 5;
     const commercial = script.quality?.commercial ?? 5;
 
     const revenue = Math.round(avgQuality * commercial * 15);
+    script.revenue = revenue;
     gs.money = (gs.money ?? 0) + revenue;
 
     const creativeGain = Math.round(avgQuality * 2);
