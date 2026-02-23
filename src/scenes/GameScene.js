@@ -47,6 +47,7 @@ export class GameScene extends Phaser.Scene {
     this.notesSystem = new NotesSystem(this);
     this.relationshipSystem = new RelationshipSystem(this);
     this.pipelineSystem = new PipelineSystem(this);
+    this.pipelineSystem.migrateScripts();
 
     if (!this.gameState.inbox) this.gameState.inbox = [];
     if (this.gameState.inbox.length === 0) {
@@ -333,11 +334,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   _onNewDay() {
-    const pipelineMessages = this.pipelineSystem.processDailyPipeline();
-    pipelineMessages.forEach((msg, i) => {
-      this.time.delayedCall(500 + i * 1500, () => this.showMessage(msg));
-    });
-
     this.scriptEngine.populateInbox(Math.random() < 0.6 ? 1 : 2);
     this.spawnNPCs();
   }
@@ -375,6 +371,9 @@ export class GameScene extends Phaser.Scene {
   update(time, delta) {
     if (!this.timePaused) {
       this.timeSystem.update(delta);
+
+      const gameMinutes = (delta / 1000) * 10;
+      this.pipelineSystem.update(gameMinutes);
 
       if ((this.gameState.time ?? 480) >= 1380) {
         this.showMessage("It's getting very late. Head home to sleep.");

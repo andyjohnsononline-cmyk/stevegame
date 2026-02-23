@@ -77,13 +77,33 @@ All NPCs hang out at the cafe. Conversations evolve as your relationship (hearts
 
 ## Pipeline
 
-Greenlit scripts enter **development** for 3 days, then **release**. On release, you get a quality-based result message (critical acclaim, positive reviews, mixed, or poor). No money, no budget, no revenue — just the satisfaction of the work.
+Greenlit scripts enter **development** for 3 game-days (2880 game-minutes), progressing through three visible sub-stages:
+
+| Stage | Progress Range | Description |
+|---|---|---|
+| **Writing** | 0–33% | Script revisions and rewrites |
+| **Production** | 33–66% | Filming and principal photography |
+| **Post-Production** | 66–100% | Editing, sound, and finishing |
+
+Progress ticks forward in real-time as the game clock runs (not only on sleep). On completion, you get a quality-based result message (critical acclaim, positive reviews, mixed, or poor). No money, no budget, no revenue — just the satisfaction of the work.
+
+---
+
+## HUD
+
+The screen has three persistent idler-style overlays that keep the world feeling alive:
+
+| Element | Position | Description |
+|---|---|---|
+| **Pipeline Panel** | Right edge (~180px wide) | Shows every greenlit show as a card with title, filmmaker, sub-stage label, and a progress bar that fills in real-time. Color-coded by stage (blue/yellow/purple). |
+| **Relationship Portraits** | Left edge (~44px wide) | Mini portraits for all 8 NPCs using their portrait colors, with filled hearts (0–10) beneath. Pulses briefly when a relationship changes. |
+| **Activity Feed** | Bottom strip | Scrolling ticker showing pipeline milestones ("Script entered Production"), release announcements, and ambient flavor lines about what NPCs are doing. |
 
 ---
 
 ## Time
 
-Each day runs from 8:00 AM to midnight. Time passes as you read scripts, give notes, and explore. Sleep advances to the next day. New scripts arrive each morning. The pipeline processes daily.
+Each day runs from 8:00 AM to midnight. Time passes as you read scripts, give notes, and explore. The pipeline progresses continuously while time is running. Sleep advances to the next day. New scripts arrive each morning.
 
 ---
 
