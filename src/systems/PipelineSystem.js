@@ -1,9 +1,9 @@
-const TOTAL_DEV_MINUTES = 2880; // 3 game-days worth of active time (960 min/day)
+const TOTAL_DEV_MINUTES = 960; // 1 game-day (3x faster than original 2880)
 
 const STAGES = [
-  { id: 'writing', label: 'Writing', start: 0, end: 960 },
-  { id: 'production', label: 'Production', start: 960, end: 1920 },
-  { id: 'post', label: 'Post-Production', start: 1920, end: TOTAL_DEV_MINUTES },
+  { id: 'writing', label: 'Writing', start: 0, end: 320 },
+  { id: 'production', label: 'Production', start: 320, end: 640 },
+  { id: 'post', label: 'Post-Production', start: 640, end: TOTAL_DEV_MINUTES },
 ];
 
 export class PipelineSystem {
@@ -121,7 +121,7 @@ export class PipelineSystem {
     for (const script of gs.pipeline) {
       if (script.progressMinutes === undefined) {
         const daysElapsed = (gs.day ?? 1) - (script.stageStartDay ?? gs.day ?? 1);
-        script.progressMinutes = Math.min(daysElapsed * 960, TOTAL_DEV_MINUTES - 1);
+        script.progressMinutes = Math.min(daysElapsed * 320, TOTAL_DEV_MINUTES - 1);
         script.stage = this._getStage(script.progressMinutes).id;
       }
     }
