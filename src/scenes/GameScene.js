@@ -2,48 +2,23 @@ import Phaser from 'phaser';
 import { Player } from '../entities/Player.js';
 import { NPC } from '../entities/NPC.js';
 import { TimeSystem } from '../systems/TimeSystem.js';
-import { EnergySystem } from '../systems/EnergySystem.js';
 import { ScriptEngine } from '../systems/ScriptEngine.js';
 import { NotesSystem } from '../systems/NotesSystem.js';
 import { RelationshipSystem } from '../systems/RelationshipSystem.js';
-import { CareerSystem } from '../systems/CareerSystem.js';
 import { PipelineSystem } from '../systems/PipelineSystem.js';
-import { EventSystem } from '../systems/EventSystem.js';
-import { EmailSystem } from '../systems/EmailSystem.js';
 import { SaveSystem } from '../utils/SaveSystem.js';
-import { LOCATIONS, getLocation } from '../data/locationData.js';
-import { CHARACTERS } from '../data/characterData.js';
-import { pickMeetingScenario, MENTEE_PROMPTS } from '../data/meetingData.js';
-import { PALETTE } from '../utils/TextureGenerator.js';
+import { getLocation } from '../data/locationData.js';
 
 const TILE = 32;
 
 const OBJ_TEXTURES = {
   bed: 'obj_bed',
   desk: 'obj_desk',
-  coffee_machine: 'obj_coffee',
-  phone: 'obj_phone',
   chair: 'obj_chair',
   table: 'obj_table',
   bookshelf: 'obj_bookshelf',
-  bar: 'obj_table',
-  bench: 'obj_bench',
-  tree: 'obj_tree',
-  reception: 'obj_desk',
-  meeting: 'obj_desk',
-  gift_vendor: 'obj_market_stall',
-  stall: 'obj_market_stall',
   door: 'obj_door',
-  smoking_area: 'obj_smoking_area',
 };
-
-const MAP_CONNECTIONS = [
-  ['houseboat', 'cafe'],
-  ['cafe', 'canal_walk'],
-  ['canal_walk', 'office_ground'],
-  ['canal_walk', 'market'],
-  ['office_ground', 'office_upper'],
-];
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -64,32 +39,18 @@ export class GameScene extends Phaser.Scene {
     this.npcs = [];
     this.interactables = [];
     this.exitZones = [];
-    this.waterTiles = [];
     this.timePaused = false;
     this.transitioning = false;
-    this.travelMapOpen = false;
-    this.travelMapElements = [];
-    this.waterFrame = 0;
-    this.waterTimer = 0;
-    this.rainEmitter = null;
 
     this.timeSystem = new TimeSystem(this);
-    this.energySystem = new EnergySystem(this);
     this.scriptEngine = new ScriptEngine(this);
     this.notesSystem = new NotesSystem(this);
     this.relationshipSystem = new RelationshipSystem(this);
-    this.careerSystem = new CareerSystem(this);
     this.pipelineSystem = new PipelineSystem(this);
-    this.eventSystem = new EventSystem();
-    this.emailSystem = new EmailSystem(this);
 
     if (!this.gameState.inbox) this.gameState.inbox = [];
     if (this.gameState.inbox.length === 0) {
       this.scriptEngine.populateInbox(3);
-    }
-
-    if (!this.gameState.seasonStartReputation) {
-      this.careerSystem.snapshotReputation();
     }
 
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -104,11 +65,8 @@ export class GameScene extends Phaser.Scene {
     this.tabKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
 
     this.spaceKey.on('down', () => this.handleInteract());
-    this.escKey.on('down', () => this.handleEsc());
+    this.escKey.on('down', () => this.togglePauseMenu());
     this.tabKey.on('down', () => this.openInbox());
-
-    this.daylightOverlay = this.add.rectangle(480, 320, 1600, 1200, 0x0a0a1e)
-      .setDepth(50).setAlpha(0).setScrollFactor(0);
 
     this.interactPrompt = this.add.text(0, 0, '', {
       fontSize: '11px', fontFamily: 'monospace', color: '#FFD700',
@@ -147,7 +105,6 @@ export class GameScene extends Phaser.Scene {
 
     const floorKey = loc.tileFloor ?? 'tile_office_floor';
     const wallKey = loc.tileWall ?? 'tile_wall';
-    const isWaterWall = wallKey === 'tile_water';
 
     for (let row = 0; row < loc.mapHeight; row++) {
       for (let col = 0; col < loc.mapWidth; col++) {
@@ -155,14 +112,9 @@ export class GameScene extends Phaser.Scene {
         const py = row * TILE + TILE / 2;
         const isWall = loc.wallMap?.[row]?.[col] === 1;
 
-        let texKey = isWall ? wallKey : floorKey;
-        if (isWall && isWaterWall) texKey = 'tile_water_0';
+        const texKey = isWall ? wallKey : floorKey;
         const fallback = this.textures.exists(texKey) ? texKey : 'tile_office_floor';
-        const tileImg = this.add.image(px, py, fallback).setDepth(0);
-
-        if (isWall && isWaterWall) {
-          this.waterTiles.push(tileImg);
-        }
+        this.add.image(px, py, fallback).setDepth(0);
 
         if (isWall) {
           const wall = this.wallGroup.create(px, py, null);
@@ -205,7 +157,6 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.wallGroup);
 
     this.spawnNPCs();
-    this.setupRain(loc);
     this.showLocationBanner(loc.name);
   }
 
@@ -214,14 +165,8 @@ export class GameScene extends Phaser.Scene {
     this.npcs = [];
     this.interactables = [];
     this.exitZones = [];
-    this.waterTiles = [];
-    if (this.rainEmitter) {
-      this.rainEmitter.stop();
-      this.rainEmitter = null;
-    }
     this.children?.list
-      ?.filter(c => c !== this.daylightOverlay && c !== this.interactPrompt
-        && c !== this.locationBanner && c !== this.messageText)
+      ?.filter(c => c !== this.interactPrompt && c !== this.locationBanner && c !== this.messageText)
       .forEach(c => c.destroy());
   }
 
@@ -229,15 +174,7 @@ export class GameScene extends Phaser.Scene {
     this.npcs.forEach(n => n.destroy());
     this.npcs = [];
 
-    const timePeriod = this.timeSystem.getTimePeriod();
-    let npcsHere = this.relationshipSystem.getNPCsAtLocation(this.gameState.currentLocation, timePeriod);
-
-    // Filter out mentee NPCs unless player is Director level (3) or above
-    const careerLevel = this.gameState.careerLevel ?? 0;
-    if (careerLevel < 3) {
-      npcsHere = npcsHere.filter(c => c.role !== 'mentee');
-    }
-
+    const npcsHere = this.relationshipSystem.getNPCsAtLocation(this.gameState.currentLocation);
     const spots = this.currentLocation?.npcSpots ?? [];
 
     npcsHere.forEach((charData, i) => {
@@ -253,26 +190,6 @@ export class GameScene extends Phaser.Scene {
         console.warn('Failed to spawn NPC:', charData.name, e);
       }
     });
-  }
-
-  setupRain(loc) {
-    if (!loc.outdoors || !this.textures.exists('particle_rain')) return;
-    if (Math.random() > 0.4) return;
-
-    const mapW = loc.mapWidth * TILE;
-    const mapH = loc.mapHeight * TILE;
-    this.rainEmitter = this.add.particles(0, -20, 'particle_rain', {
-      x: { min: 0, max: mapW },
-      y: -10,
-      lifespan: 800,
-      speedY: { min: 200, max: 350 },
-      speedX: { min: -30, max: -10 },
-      scale: { start: 0.8, end: 0.3 },
-      alpha: { start: 0.6, end: 0.1 },
-      quantity: 3,
-      frequency: 40,
-    });
-    this.rainEmitter.setDepth(45);
   }
 
   showLocationBanner(name) {
@@ -293,7 +210,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   handleInteract() {
-    if (this.travelMapOpen || this.timePaused || this.transitioning || !this.player || this.player.isInUI) return;
+    if (this.timePaused || this.transitioning || !this.player || this.player.isInUI) return;
 
     const px = this.player.x;
     const py = this.player.y;
@@ -320,23 +237,10 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  handleEsc() {
-    if (this.travelMapOpen) {
-      this.closeTravelMap();
-      return;
-    }
-    this.togglePauseMenu();
-  }
-
   handleExit(exit) {
     if (this.transitioning) return;
-
-    if (exit.outdoorExit) {
-      this.showTravelMap();
-      return;
-    }
-
     this.transitioning = true;
+
     const targetLoc = getLocation(exit.target);
     if (!targetLoc) { this.transitioning = false; return; }
 
@@ -359,184 +263,13 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  // ========== TRAVEL MAP ==========
-
-  showTravelMap() {
-    if (this.travelMapOpen) return;
-    this.travelMapOpen = true;
-    this.timePaused = true;
-    this.player?.setInUI(true);
-    this.travelMapElements = [];
-
-    const cam = this.cameras.main;
-    const cx = cam.scrollX + cam.width / 2;
-    const cy = cam.scrollY + cam.height / 2;
-
-    const bg = this.add.rectangle(cx, cy, cam.width, cam.height, 0x1A1A2E, 0.92)
-      .setDepth(300).setScrollFactor(0).setOrigin(0.5);
-    this.travelMapElements.push(bg);
-
-    const mapBg = this.add.rectangle(480, 310, 700, 480, 0x3A5A8A, 1)
-      .setDepth(301).setScrollFactor(0).setOrigin(0.5);
-    this.travelMapElements.push(mapBg);
-
-    const mapInner = this.add.rectangle(480, 310, 690, 470, 0x5B9BD5, 1)
-      .setDepth(302).setScrollFactor(0).setOrigin(0.5);
-    this.travelMapElements.push(mapInner);
-
-    const landAreas = [
-      { x: 260, y: 180, w: 200, h: 120 },
-      { x: 380, y: 250, w: 280, h: 150 },
-      { x: 520, y: 160, w: 160, h: 100 },
-      { x: 580, y: 340, w: 200, h: 160 },
-    ];
-    for (const la of landAreas) {
-      const land = this.add.rectangle(la.x, la.y, la.w, la.h, 0xD5C4A1, 1)
-        .setDepth(303).setScrollFactor(0);
-      this.travelMapElements.push(land);
-    }
-
-    const canalPaths = [
-      { x1: 300, y1: 220, x2: 450, y2: 280 },
-      { x1: 450, y1: 280, x2: 550, y2: 200 },
-      { x1: 450, y1: 280, x2: 600, y2: 380 },
-    ];
-    for (const cp of canalPaths) {
-      const line = this.add.graphics().setDepth(304).setScrollFactor(0);
-      line.lineStyle(4, 0x4A8AC0, 0.6);
-      line.beginPath();
-      line.moveTo(cp.x1, cp.y1);
-      line.lineTo(cp.x2, cp.y2);
-      line.strokePath();
-      this.travelMapElements.push(line);
-    }
-
-    const title = this.add.text(480, 85, 'Amsterdam', {
-      fontSize: '24px', fontFamily: 'Georgia, serif', color: '#F5E6CC',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(310).setScrollFactor(0);
-    this.travelMapElements.push(title);
-
-    const subtitle = this.add.text(480, 110, 'Where would you like to go?', {
-      fontSize: '12px', fontFamily: 'Georgia, serif', color: '#CCBBAA',
-    }).setOrigin(0.5).setDepth(310).setScrollFactor(0);
-    this.travelMapElements.push(subtitle);
-
-    for (const conn of MAP_CONNECTIONS) {
-      const locA = LOCATIONS[conn[0]];
-      const locB = LOCATIONS[conn[1]];
-      if (!locA?.mapPosition || !locB?.mapPosition) continue;
-      const pathLine = this.add.graphics().setDepth(305).setScrollFactor(0);
-      pathLine.lineStyle(2, 0xB0A080, 0.5);
-      pathLine.beginPath();
-      pathLine.moveTo(locA.mapPosition.x, locA.mapPosition.y);
-      pathLine.lineTo(locB.mapPosition.x, locB.mapPosition.y);
-      pathLine.strokePath();
-      this.travelMapElements.push(pathLine);
-    }
-
-    const currentLocId = this.gameState.currentLocation;
-
-    for (const [locId, loc] of Object.entries(LOCATIONS)) {
-      if (!loc.mapPosition) continue;
-      const { x, y } = loc.mapPosition;
-      const isCurrent = locId === currentLocId;
-
-      const nodeKey = isCurrent ? 'map_node_current' : 'map_node';
-      const nodeFallback = this.textures.exists(nodeKey) ? nodeKey : 'map_node';
-      const node = this.add.image(x, y, nodeFallback)
-        .setDepth(306).setScrollFactor(0).setInteractive({ useHandCursor: true });
-      this.travelMapElements.push(node);
-
-      const label = this.add.text(x, y + 16, loc.name, {
-        fontSize: '10px', fontFamily: 'Georgia, serif', color: '#F5E6CC',
-        stroke: '#000', strokeThickness: 2,
-      }).setOrigin(0.5).setDepth(310).setScrollFactor(0);
-      this.travelMapElements.push(label);
-
-      if (!isCurrent) {
-        node.on('pointerover', () => {
-          node.setScale(1.3);
-          label.setStyle({ color: '#FFD700' });
-        });
-        node.on('pointerout', () => {
-          node.setScale(1);
-          label.setStyle({ color: '#F5E6CC' });
-        });
-        node.on('pointerdown', () => this.travelTo(locId));
-      }
-    }
-
-    const hint = this.add.text(480, 555, '[ESC] Cancel', {
-      fontSize: '11px', fontFamily: 'monospace', color: '#888',
-    }).setOrigin(0.5).setDepth(310).setScrollFactor(0);
-    this.travelMapElements.push(hint);
-  }
-
-  closeTravelMap() {
-    for (const el of this.travelMapElements) {
-      el.destroy();
-    }
-    this.travelMapElements = [];
-    this.travelMapOpen = false;
-    this.timePaused = false;
-    this.player?.setInUI(false);
-  }
-
-  travelTo(locationId) {
-    if (this.transitioning) return;
-    this.transitioning = true;
-
-    const targetLoc = getLocation(locationId);
-    if (!targetLoc) { this.transitioning = false; return; }
-
-    const currentPos = LOCATIONS[this.gameState.currentLocation]?.mapPosition;
-    const targetPos = targetLoc.mapPosition;
-    let travelTime = 10;
-    if (currentPos && targetPos) {
-      const dist = Math.sqrt((targetPos.x - currentPos.x) ** 2 + (targetPos.y - currentPos.y) ** 2);
-      travelTime = Math.round(5 + (dist / 50) * 5);
-      travelTime = Math.min(travelTime, 15);
-    }
-
-    this.gameState.time = (this.gameState.time ?? 480) + travelTime;
-
-    const spawnPos = { x: Math.floor(targetLoc.mapWidth / 2), y: Math.floor(targetLoc.mapHeight / 2) };
-    const returnExit = targetLoc.exits?.find(e => e.target === this.gameState.currentLocation);
-    if (returnExit) {
-      const offX = returnExit.x <= 0 ? 2 : returnExit.x >= targetLoc.mapWidth - 1 ? -2 : 0;
-      const offY = returnExit.y <= 0 ? 2 : returnExit.y >= targetLoc.mapHeight - 1 ? -2 : 0;
-      spawnPos.x = returnExit.x + (offX || 0);
-      spawnPos.y = returnExit.y + (offY || 1);
-    }
-
-    this.gameState.playerPos = spawnPos;
-
-    this.closeTravelMap();
-    this.cameras.main.fadeOut(300, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.loadLocation(locationId);
-      this.cameras.main.fadeIn(300, 0, 0, 0);
-      this.transitioning = false;
-    });
-  }
-
-  // ========== DIALOGUE & INTERACTIONS ==========
-
   startDialogue(npc) {
     const charData = npc.getCharacterData();
     const hearts = this.relationshipSystem.getHearts(npc.characterId);
-
-    // Mentee NPCs: 50% chance of mentoring dilemma (if player has energy)
-    if (charData?.role === 'mentee' && Math.random() < 0.5 && this.energySystem.canAfford('socialize')) {
-      this.startMentoringSession(npc);
-      return;
-    }
-
     const dialogue = npc.getDialogue(hearts);
     if (!dialogue) return;
 
-    this.relationshipSystem.addHearts(npc.characterId, 0.2);
+    this.relationshipSystem.addHearts(npc.characterId, 0.1);
     this.timePaused = true;
     this.player.setInUI(true);
 
@@ -549,49 +282,13 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  startMentoringSession(npc) {
-    const charData = npc.getCharacterData();
-    const scenario = pickMeetingScenario('mentoring');
-    if (!scenario) {
-      this.startDialogue(npc);
-      return;
-    }
-
-    const promptTemplate = MENTEE_PROMPTS[Math.floor(Math.random() * MENTEE_PROMPTS.length)];
-    const mentoringScenario = {
-      ...scenario,
-      speaker: charData.name,
-      steps: scenario.steps.map(step => ({
-        ...step,
-        prompt: step.prompt ?? promptTemplate(charData.name.split(' ')[0]),
-      })),
-    };
-
-    this.relationshipSystem.addHearts(npc.characterId, 0.3);
-    this.timePaused = true;
-    this.player.setInUI(true);
-
-    this.scene.launch('DialogueScene', {
-      gameScene: this,
-      mode: 'meeting',
-      meeting: mentoringScenario,
-    });
-  }
-
   handleObjectInteraction(obj) {
     switch (obj.action) {
       case 'sleep': this.handleSleep(); break;
-      case 'make_coffee': this.handleCoffee(); break;
-      case 'check_phone': this.openEmail(); break;
       case 'read_scripts':
       case 'work': this.openInbox(); break;
-      case 'buy_gift': this.openGiftShop(); break;
-      case 'order_drink': this.handleDrink(); break;
-      case 'attend_meeting': this.handleMeeting(); break;
       case 'sit': this.showMessage(this._flavorText('sit')); break;
-      case 'admire': this.showMessage(this._flavorText('admire')); break;
       case 'browse': this.showMessage(this._flavorText('browse')); break;
-      case 'smoke': this.handleSmoke(); break;
       default: this.showMessage(obj.label ?? 'Nothing happens.');
     }
   }
@@ -607,101 +304,17 @@ export class GameScene extends Phaser.Scene {
 
     this.time.delayedCall(1200, () => {
       this.timeSystem.advanceDay();
-      this.energySystem.restoreFull();
       this._onNewDay();
     });
   }
 
-  handleCoffee() {
-    if ((this.gameState.energy ?? 0) >= (this.gameState.maxEnergy ?? 10)) {
-      this.showMessage('Already at full energy!');
-      return;
-    }
-    this.energySystem.restore(2);
-    this.gameState.time = (this.gameState.time ?? 480) + 15;
-    this.showMessage('A strong Dutch coffee. +2 Energy.');
-  }
-
-  handleDrink() {
-    if (!this.energySystem.canAfford('socialize')) {
-      this.showMessage('Too tired for a drink.');
-      return;
-    }
-    this.energySystem.spend('socialize');
-    this.gameState.time = (this.gameState.time ?? 480) + 30;
-    this.showMessage('You enjoy a borrel at the bar. Gezellig.');
-  }
-
-  handleSmoke() {
-    this.gameState.time = (this.gameState.time ?? 480) + 15;
-    this.energySystem.restore(1);
-    const lines = [
-      'You light up by the canal. The water glimmers. +1 Energy.',
-      'A quiet smoke break. Barges drift by. +1 Energy.',
-      'You watch the cyclists pass, cigarette in hand. +1 Energy.',
-      'The canal air mixes with smoke. A moment of calm. +1 Energy.',
-    ];
-    this.showMessage(lines[Math.floor(Math.random() * lines.length)]);
-  }
-
-  handleMeeting() {
-    const gs = this.gameState;
-    const pending = gs.pendingMeetings ?? [];
-
-    if (pending.length === 0) {
-      this.showMessage('No meetings scheduled. Check your email.');
-      return;
-    }
-
-    if (!this.energySystem.canAfford('meeting')) {
-      this.showMessage('Too tired for a meeting right now.');
-      return;
-    }
-
-    const meetingType = pending[0];
-    const scenario = pickMeetingScenario(meetingType);
-    if (!scenario) {
-      this.showMessage('No meetings available right now.');
-      return;
-    }
-
-    this.timePaused = true;
-    this.player?.setInUI(true);
-    this.scene.launch('DialogueScene', {
-      gameScene: this,
-      mode: 'meeting',
-      meeting: scenario,
-    });
-  }
-
   openInbox() {
-    if (this.travelMapOpen) return;
     if (this.scene.isActive('DialogueScene')) return;
     this.timePaused = true;
     this.player?.setInUI(true);
     this.scene.launch('DialogueScene', {
       gameScene: this,
       mode: 'inbox',
-    });
-  }
-
-  openEmail() {
-    if (this.travelMapOpen) return;
-    if (this.scene.isActive('DialogueScene')) return;
-    this.timePaused = true;
-    this.player?.setInUI(true);
-    this.scene.launch('DialogueScene', {
-      gameScene: this,
-      mode: 'email',
-    });
-  }
-
-  openGiftShop() {
-    this.timePaused = true;
-    this.player?.setInUI(true);
-    this.scene.launch('DialogueScene', {
-      gameScene: this,
-      mode: 'gift_shop',
     });
   }
 
@@ -720,75 +333,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   _onNewDay() {
-    const gs = this.gameState;
-
     const pipelineMessages = this.pipelineSystem.processDailyPipeline();
     pipelineMessages.forEach((msg, i) => {
       this.time.delayedCall(500 + i * 1500, () => this.showMessage(msg));
     });
 
-    if (gs.day % 7 === 0) {
-      this.careerSystem.paySalary();
-      const salary = this.careerSystem.getSalary();
-      this.showMessage(`Payday! +$${salary}`);
-    }
-
-    const promoted = this.careerSystem.checkPromotion();
-    if (promoted) {
-      this.time.delayedCall(1500, () => {
-        this.showMessage(`Promoted to ${this.careerSystem.getTitle()}!`);
-      });
-    }
-
     this.scriptEngine.populateInbox(Math.random() < 0.6 ? 1 : 2);
-
-    this.emailSystem.generateDailyEmails();
-
-    // Quarterly slate review on day 28 (last day of season)
-    if (gs.day === 28) {
-      const review = this.careerSystem.generateSlateReview();
-      if (review) {
-        const promoted = this.careerSystem.checkPromotion();
-        review.promotionReady = promoted;
-        this.time.delayedCall(2500, () => {
-          this.timePaused = true;
-          this.player?.setInUI(true);
-          this.scene.launch('DialogueScene', {
-            gameScene: this,
-            mode: 'slate_review',
-            review,
-          });
-        });
-      }
-    }
-
-    // Snapshot reputation at season start for review deltas
-    if (gs.day === 1) {
-      this.careerSystem.snapshotReputation();
-    }
-
-    // Auto-schedule strategy session on day 1 of each season (except the very first day)
-    if (gs.day > 1 && ((gs.day - 1) % 28 === 0)) {
-      if (!gs.pendingMeetings) gs.pendingMeetings = [];
-      if (!gs.pendingMeetings.includes('strategy_session')) {
-        gs.pendingMeetings.push('strategy_session');
-        this.showMessage('Quarterly strategy session scheduled. Head to the meeting room.');
-      }
-    }
-
-    const event = this.eventSystem.checkForEvent(gs);
-    if (event) {
-      this.time.delayedCall(2000, () => {
-        this.timePaused = true;
-        this.player?.setInUI(true);
-        this.scene.launch('DialogueScene', {
-          gameScene: this,
-          mode: 'event',
-          event,
-        });
-      });
-    }
-
     this.spawnNPCs();
   }
 
@@ -804,15 +354,10 @@ export class GameScene extends Phaser.Scene {
         'The chair creaks. Amsterdam hums outside.',
         'A moment of calm in the chaos.',
       ],
-      admire: [
-        'The Amsterdam light is beautiful today.',
-        'Trees sway over the canal. A cyclist passes.',
-        'The city has a way of making you feel small and grateful.',
-      ],
       browse: [
-        'Interesting wares.',
+        'Interesting reads on the shelf.',
         'You browse but nothing catches your eye.',
-        'The vendor smiles warmly.',
+        'A well-worn copy of "Story" by Robert McKee.',
       ],
     };
     const lines = pool[action] ?? ['You look around.'];
@@ -850,45 +395,7 @@ export class GameScene extends Phaser.Scene {
       npc.update(this.player?.x ?? 0, this.player?.y ?? 0);
     }
 
-    this.updateDaylight();
-    this.updateWaterAnimation(delta);
-
-    if (!this.travelMapOpen) {
-      this.updateInteractionPrompt();
-    }
-  }
-
-  updateDaylight() {
-    if (!this.daylightOverlay) return;
-    const hour = (this.gameState.time ?? 480) / 60;
-
-    if (hour >= 18 && hour < 20) {
-      const t = (hour - 18) / 2;
-      const r = Math.round(0x0a + t * (0xFF - 0x0a) * 0.3);
-      const gg = Math.round(0x0a + t * (0x70 - 0x0a) * 0.3);
-      const b = Math.round(0x1e + t * (0x43 - 0x1e) * 0.2);
-      this.daylightOverlay.fillColor = (r << 16) | (gg << 8) | b;
-      this.daylightOverlay.setAlpha(t * 0.25);
-    } else if (hour >= 20) {
-      this.daylightOverlay.fillColor = 0x0a0a1e;
-      const t = Math.min((hour - 20) / 3, 1);
-      this.daylightOverlay.setAlpha(0.15 + t * 0.35);
-    } else {
-      this.daylightOverlay.setAlpha(0);
-    }
-  }
-
-  updateWaterAnimation(delta) {
-    if (this.waterTiles.length === 0) return;
-    this.waterTimer += delta;
-    if (this.waterTimer < 500) return;
-    this.waterTimer = 0;
-    this.waterFrame = (this.waterFrame + 1) % 4;
-    const texKey = `tile_water_${this.waterFrame}`;
-    if (!this.textures.exists(texKey)) return;
-    for (const tile of this.waterTiles) {
-      tile.setTexture(texKey);
-    }
+    this.updateInteractionPrompt();
   }
 
   updateInteractionPrompt() {

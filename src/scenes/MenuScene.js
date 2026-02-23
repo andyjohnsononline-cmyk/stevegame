@@ -36,7 +36,7 @@ export class MenuScene extends Phaser.Scene {
       color: '#FFF5E1',
     }).setOrigin(0.5);
 
-    this.add.text(cx, 190, 'Amsterdam, Year One', {
+    this.add.text(cx, 190, 'Amsterdam', {
       fontSize: '12px',
       fontFamily: 'Georgia, serif',
       color: '#8B6914',
@@ -53,7 +53,7 @@ export class MenuScene extends Phaser.Scene {
     buttonY += 60;
     this._createButton(cx, buttonY, 'How to Play', () => this.showHowToPlay());
 
-    this.add.text(cx, h - 90, 'You are Steve, a junior content executive at a\nstreaming company\'s Amsterdam office.\nRead scripts. Give notes. Build relationships.', {
+    this.add.text(cx, h - 90, 'You are Steve, a content executive at a\nstreaming company\'s Amsterdam office.\nRead scripts. Give notes. Talk to people.', {
       fontSize: '11px',
       fontFamily: 'Georgia, serif',
       color: DIM_COLOR,
@@ -110,13 +110,11 @@ export class MenuScene extends Phaser.Scene {
       'ESC ................... Pause menu (save, quit)',
     ]);
 
-    section('Your Daily Life', [
-      'You are Steve, a content executive at a streaming company.',
-      'Each day you have limited energy. Spend it wisely:',
-      '  - Read scripts that arrive in your inbox',
-      '  - Give notes to improve scripts (or strain relationships)',
-      '  - Meet filmmakers, build relationships, give gifts',
-      '  - Explore Amsterdam: the cafe, canals, market, and office',
+    section('The Core Loop', [
+      'Scripts arrive in your inbox each morning.',
+      'Read them, then give notes or greenlight them.',
+      'Walk to the cafe to talk to filmmakers and colleagues.',
+      'Go home and sleep to start a new day.',
     ]);
 
     section('The Notes Triangle', [
@@ -124,22 +122,15 @@ export class MenuScene extends Phaser.Scene {
       '  Quality ....... How good the script actually becomes',
       '  Relationship .. How the filmmaker feels about you',
       '  Commercial .... Whether the project will find an audience',
-      'There is no single right answer. Your strategy shapes your career.',
-    ]);
-
-    section('Locations', [
-      'Houseboat ...... Your home. Sleep, make coffee, check your inbox.',
-      'Cafe ........... Meet other streaming execs over drinks.',
-      'Canals ......... Walk along the Jordaan. Smoke break area outside.',
-      'Office ......... Your desk, colleagues, and the bullpen upstairs.',
-      'Market ......... Buy gifts for filmmakers at De Pijp.',
+      'There is no single right answer. Pay attention to each',
+      "filmmaker's preferred tone.",
     ]);
 
     section('Tips', [
-      'Talk to NPCs often -- relationships unlock new opportunities.',
-      'Skim scripts to save energy, but full reads give better notes.',
-      'Go to bed before midnight to start fresh the next day.',
-      'Pay attention to each filmmaker\'s preferred tone for notes.',
+      'Talk to NPCs often -- your relationships evolve as you',
+      '  give notes on their scripts.',
+      'Go to bed after 6pm to start fresh the next day.',
+      'Greenlit scripts release after 3 days in development.',
     ]);
 
     this._createButton(cx, h - 40, 'Back', () => this.showMainMenu());
