@@ -1,3 +1,11 @@
+const TOTAL_DEV_MINUTES = 2880; // 3 game-days worth of active time (960 min/day)
+
+const STAGES = [
+  { id: 'writing', label: 'Writing', start: 0, end: 960 },
+  { id: 'production', label: 'Production', start: 960, end: 1920 },
+  { id: 'post', label: 'Post-Production', start: 1920, end: TOTAL_DEV_MINUTES },
+];
+
 export class PipelineSystem {
   constructor(scene) {
     this.scene = scene;
@@ -10,32 +18,49 @@ export class PipelineSystem {
     const inboxIdx = gs.inbox?.indexOf(script);
     if (inboxIdx >= 0) gs.inbox.splice(inboxIdx, 1);
 
-    script.stage = 'development';
-    script.stageStartDay = gs.day ?? 1;
+    script.stage = 'writing';
+    script.progressMinutes = 0;
 
     if (!gs.pipeline) gs.pipeline = [];
     gs.pipeline.push(script);
+
+    this.scene.events?.emit('activity-message', `"${script.title}" greenlit — entering Writing.`);
   }
 
-  processDailyPipeline() {
+  update(deltaMinutes) {
     const gs = this.scene.gameState;
-    if (!gs?.pipeline) return [];
+    if (!gs?.pipeline?.length) return;
 
-    const messages = [];
     for (const script of [...gs.pipeline]) {
-      const currentDay = gs.day ?? 1;
-      const daysElapsed = currentDay - (script.stageStartDay ?? currentDay);
+      const prevProgress = script.progressMinutes ?? 0;
+      script.progressMinutes = Math.min(prevProgress + deltaMinutes, TOTAL_DEV_MINUTES);
 
-      if (daysElapsed >= 3) {
-        const result = this.releaseScript(script);
-        const idx = gs.pipeline.indexOf(script);
-        if (idx >= 0) gs.pipeline.splice(idx, 1);
-        if (!gs.completedScripts) gs.completedScripts = [];
-        gs.completedScripts.push(script);
-        messages.push(result);
+      const prevStage = this._getStage(prevProgress);
+      const currStage = this._getStage(script.progressMinutes);
+      if (prevStage.id !== currStage.id) {
+        script.stage = currStage.id;
+        this.scene.events?.emit('stage-changed', { script, stage: currStage });
+        this.scene.events?.emit('activity-message',
+          `"${script.title}" moved to ${currStage.label}.`);
+      }
+
+      if (script.progressMinutes >= TOTAL_DEV_MINUTES) {
+        this._release(script);
       }
     }
-    return messages;
+  }
+
+  _release(script) {
+    const gs = this.scene.gameState;
+    const idx = gs.pipeline.indexOf(script);
+    if (idx >= 0) gs.pipeline.splice(idx, 1);
+
+    const result = this.releaseScript(script);
+    if (!gs.completedScripts) gs.completedScripts = [];
+    gs.completedScripts.push(script);
+
+    this.scene.events?.emit('pipeline-release', { script, message: result });
+    this.scene.events?.emit('activity-message', result);
   }
 
   releaseScript(script) {
@@ -55,7 +80,38 @@ export class PipelineSystem {
     return `"${script.title}" released to poor reviews. A learning experience.`;
   }
 
+  _getStage(progressMinutes) {
+    for (const s of STAGES) {
+      if (progressMinutes < s.end) return s;
+    }
+    return STAGES[STAGES.length - 1];
+  }
+
+  getProgress(script) {
+    const progress = script.progressMinutes ?? 0;
+    return {
+      fraction: Math.min(progress / TOTAL_DEV_MINUTES, 1),
+      stage: this._getStage(progress),
+      minutes: progress,
+      total: TOTAL_DEV_MINUTES,
+    };
+  }
+
   getPipelineScripts() {
     return this.scene.gameState?.pipeline ?? [];
   }
+
+  migrateScripts() {
+    const gs = this.scene.gameState;
+    if (!gs?.pipeline) return;
+    for (const script of gs.pipeline) {
+      if (script.progressMinutes === undefined) {
+        const daysElapsed = (gs.day ?? 1) - (script.stageStartDay ?? gs.day ?? 1);
+        script.progressMinutes = Math.min(daysElapsed * 960, TOTAL_DEV_MINUTES - 1);
+        script.stage = this._getStage(script.progressMinutes).id;
+      }
+    }
+  }
 }
+
+export { STAGES, TOTAL_DEV_MINUTES };
