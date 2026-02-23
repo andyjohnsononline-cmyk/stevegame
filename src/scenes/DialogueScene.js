@@ -188,43 +188,44 @@ export class DialogueScene extends Phaser.Scene {
     this.makeText(480, ay + 10, `Coverage recommendation: ${rating}`, { fontSize: '14px', origin: 0.5, color: ratingColor });
 
     const btnY = 510;
-    this.makeButton(300, btnY, 'Give Notes', () => {
+    this.makeButton(360, btnY, 'Give Notes', () => {
       this.currentScript = script;
       this.clearElements();
       this.showNotesInterface();
-    }, 140, 34);
+    }, 160, 38);
 
-    this.makeButton(480, btnY, 'Greenlight', () => {
+    this.makeButton(600, btnY, 'Greenlight', () => {
       const gs = this.gameScene.gameState;
       gs.inbox = gs.inbox.filter(s => s.id !== script.id);
       this.gameScene.pipelineSystem.greenlight(script);
       this.showQuickMessage(`${script.title} greenlit for development!`);
       this.time.delayedCall(1500, () => { this.clearElements(); this.showInbox(); });
-    }, 140, 34);
-
-    this.makeButton(660, btnY, 'Back', () => { this.clearElements(); this.showInbox(); }, 100, 34);
+    }, 160, 38);
   }
 
   showNotesInterface() {
     const script = this.currentScript;
     if (!script) { this.showInbox(); return; }
 
+    const quality = script.quality ?? {};
+    const attrEntries = NOTE_FOCUSES.map(f => ({ focus: f, val: quality[f.targetAttribute] ?? 5 }));
+    attrEntries.sort((a, b) => a.val - b.val);
+    const topTwo = attrEntries.slice(0, 2).map(e => e.focus);
+
     this.makePanel(480, 320, 750, 520);
     this.makeText(480, 75, `Notes: ${script.title}`, { fontSize: '16px', origin: 0.5, color: HIGHLIGHT });
-    this.makeText(170, 110, 'Choose a focus area for your notes:', { fontSize: '13px' });
+    this.makeText(170, 130, 'This script needs work in two areas.\nWhich will you focus on?', { fontSize: '13px' });
 
-    let fy = 145;
-    NOTE_FOCUSES.forEach(focus => {
-      this.makeButton(280, fy, `${focus.label}`, () => this.selectFocus(focus), 160, 28);
-      this.makeText(380, fy - 6, focus.description, { fontSize: '9px', color: DIM_COLOR });
-      fy += 38;
+    let fy = 210;
+    topTwo.forEach(focus => {
+      this.makeButton(320, fy, focus.label, () => this.selectFocus(focus), 200, 38);
+      this.makeText(440, fy - 8, focus.description, { fontSize: '10px', color: DIM_COLOR });
+      fy += 65;
     });
 
-    this.makeText(170, fy + 15, 'The Notes Triangle:', { fontSize: '12px', color: HIGHLIGHT });
-    this.makeText(170, fy + 35, 'Every note navigates tension between quality,', { fontSize: '10px', color: DIM_COLOR });
-    this.makeText(170, fy + 48, 'filmmaker relationship, and commercial viability.', { fontSize: '10px', color: DIM_COLOR });
-
-    this.makeButton(480, 540, 'Back', () => { this.clearElements(); this.showInbox(); }, 100, 34);
+    this.makeText(170, fy + 30, 'The Notes Triangle:', { fontSize: '12px', color: HIGHLIGHT });
+    this.makeText(170, fy + 50, 'Every note navigates tension between quality,', { fontSize: '10px', color: DIM_COLOR });
+    this.makeText(170, fy + 63, 'filmmaker relationship, and commercial viability.', { fontSize: '10px', color: DIM_COLOR });
   }
 
   selectFocus(focus) {
@@ -235,22 +236,21 @@ export class DialogueScene extends Phaser.Scene {
     this.makePanel(480, 320, 750, 520);
     this.makeText(480, 80, `Notes: ${script.title}`, { fontSize: '16px', origin: 0.5, color: HIGHLIGHT });
     this.makeText(480, 110, `Focus: ${focus.label}`, { fontSize: '13px', origin: 0.5 });
-    this.makeText(170, 145, 'Choose your tone:', { fontSize: '13px' });
+    this.makeText(170, 165, 'How will you deliver the notes?', { fontSize: '13px' });
 
-    let ty = 185;
+    let ty = 220;
     NOTE_TONES.forEach(tone => {
-      this.makeButton(280, ty, tone.label, () => this.applyNote(focus, tone), 160, 32);
-      this.makeText(380, ty - 6, tone.description, { fontSize: '10px', color: DIM_COLOR });
-      ty += 48;
+      this.makeButton(320, ty, tone.label, () => this.applyNote(focus, tone), 200, 38);
+      this.makeText(440, ty - 8, tone.description, { fontSize: '10px', color: DIM_COLOR });
+      ty += 65;
     });
 
     const fmName = CHARACTERS[script.filmmakerIndex]?.name ?? 'Unknown';
-    const prefTone = CHARACTERS[script.filmmakerIndex]?.preferredTone ?? 'balanced';
-    this.makeText(170, ty + 10, `${fmName} prefers a ${prefTone} approach.`, {
+    const raw = CHARACTERS[script.filmmakerIndex]?.preferredTone ?? 'gentle';
+    const prefLabel = raw === 'gentle' ? 'supportive' : raw;
+    this.makeText(170, ty + 20, `${fmName} prefers a ${prefLabel} approach.`, {
       fontSize: '10px', color: '#D4721A',
     });
-
-    this.makeButton(480, 540, 'Back', () => { this.clearElements(); this.showNotesInterface(); }, 100, 34);
   }
 
   applyNote(focus, tone) {
@@ -301,15 +301,12 @@ export class DialogueScene extends Phaser.Scene {
     this.makeText(480, 270, `Completed: ${(gs.completedScripts ?? []).length}`, { origin: 0.5, fontSize: '10px', color: DIM_COLOR });
 
     this.makeButton(480, 320, 'Resume', () => this.closeScene());
-    this.makeButton(480, 365, 'Save Game', () => {
+    this.makeButton(480, 380, 'Save & Quit', () => {
       SaveSystem.save(gs);
-      this.showQuickMessage('Game saved!');
-    }, 180, 34);
-    this.makeButton(480, 410, 'Main Menu', () => {
       this.gameScene.scene.stop('UIScene');
       this.gameScene.scene.stop('GameScene');
       this.scene.stop();
       this.scene.start('MenuScene');
-    }, 180, 34);
+    }, 180, 38);
   }
 }
