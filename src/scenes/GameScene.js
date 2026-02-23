@@ -12,6 +12,7 @@ import { EventSystem } from '../systems/EventSystem.js';
 import { SaveSystem } from '../utils/SaveSystem.js';
 import { LOCATIONS, getLocation } from '../data/locationData.js';
 import { CHARACTERS } from '../data/characterData.js';
+import { PALETTE } from '../utils/TextureGenerator.js';
 
 const TILE = 32;
 
@@ -24,14 +25,23 @@ const OBJ_TEXTURES = {
   table: 'obj_table',
   bookshelf: 'obj_bookshelf',
   bar: 'obj_table',
-  bench: 'obj_chair',
+  bench: 'obj_bench',
   tree: 'obj_tree',
   reception: 'obj_desk',
   meeting: 'obj_desk',
   gift_vendor: 'obj_market_stall',
   stall: 'obj_market_stall',
   door: 'obj_door',
+  smoking_area: 'obj_smoking_area',
 };
+
+const MAP_CONNECTIONS = [
+  ['houseboat', 'cafe'],
+  ['cafe', 'canal_walk'],
+  ['canal_walk', 'office_ground'],
+  ['canal_walk', 'market'],
+  ['office_ground', 'office_upper'],
+];
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -52,8 +62,14 @@ export class GameScene extends Phaser.Scene {
     this.npcs = [];
     this.interactables = [];
     this.exitZones = [];
+    this.waterTiles = [];
     this.timePaused = false;
     this.transitioning = false;
+    this.travelMapOpen = false;
+    this.travelMapElements = [];
+    this.waterFrame = 0;
+    this.waterTimer = 0;
+    this.rainEmitter = null;
 
     this.timeSystem = new TimeSystem(this);
     this.energySystem = new EnergySystem(this);
@@ -81,7 +97,7 @@ export class GameScene extends Phaser.Scene {
     this.tabKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
 
     this.spaceKey.on('down', () => this.handleInteract());
-    this.escKey.on('down', () => this.togglePauseMenu());
+    this.escKey.on('down', () => this.handleEsc());
     this.tabKey.on('down', () => this.openInbox());
 
     this.daylightOverlay = this.add.rectangle(480, 320, 1600, 1200, 0x0a0a1e)
@@ -124,6 +140,7 @@ export class GameScene extends Phaser.Scene {
 
     const floorKey = loc.tileFloor ?? 'tile_office_floor';
     const wallKey = loc.tileWall ?? 'tile_wall';
+    const isWaterWall = wallKey === 'tile_water';
 
     for (let row = 0; row < loc.mapHeight; row++) {
       for (let col = 0; col < loc.mapWidth; col++) {
@@ -131,9 +148,14 @@ export class GameScene extends Phaser.Scene {
         const py = row * TILE + TILE / 2;
         const isWall = loc.wallMap?.[row]?.[col] === 1;
 
-        const texKey = isWall ? wallKey : floorKey;
+        let texKey = isWall ? wallKey : floorKey;
+        if (isWall && isWaterWall) texKey = 'tile_water_0';
         const fallback = this.textures.exists(texKey) ? texKey : 'tile_office_floor';
-        this.add.image(px, py, fallback).setDepth(0);
+        const tileImg = this.add.image(px, py, fallback).setDepth(0);
+
+        if (isWall && isWaterWall) {
+          this.waterTiles.push(tileImg);
+        }
 
         if (isWall) {
           const wall = this.wallGroup.create(px, py, null);
@@ -176,6 +198,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.wallGroup);
 
     this.spawnNPCs();
+    this.setupRain(loc);
     this.showLocationBanner(loc.name);
   }
 
@@ -184,6 +207,11 @@ export class GameScene extends Phaser.Scene {
     this.npcs = [];
     this.interactables = [];
     this.exitZones = [];
+    this.waterTiles = [];
+    if (this.rainEmitter) {
+      this.rainEmitter.stop();
+      this.rainEmitter = null;
+    }
     this.children?.list
       ?.filter(c => c !== this.daylightOverlay && c !== this.interactPrompt
         && c !== this.locationBanner && c !== this.messageText)
@@ -213,6 +241,26 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  setupRain(loc) {
+    if (!loc.outdoors || !this.textures.exists('particle_rain')) return;
+    if (Math.random() > 0.4) return;
+
+    const mapW = loc.mapWidth * TILE;
+    const mapH = loc.mapHeight * TILE;
+    this.rainEmitter = this.add.particles(0, -20, 'particle_rain', {
+      x: { min: 0, max: mapW },
+      y: -10,
+      lifespan: 800,
+      speedY: { min: 200, max: 350 },
+      speedX: { min: -30, max: -10 },
+      scale: { start: 0.8, end: 0.3 },
+      alpha: { start: 0.6, end: 0.1 },
+      quantity: 3,
+      frequency: 40,
+    });
+    this.rainEmitter.setDepth(45);
+  }
+
   showLocationBanner(name) {
     this.locationBanner.setText(name).setAlpha(1);
     this.tweens.add({
@@ -231,7 +279,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   handleInteract() {
-    if (this.timePaused || this.transitioning || !this.player || this.player.isInUI) return;
+    if (this.travelMapOpen || this.timePaused || this.transitioning || !this.player || this.player.isInUI) return;
 
     const px = this.player.x;
     const py = this.player.y;
@@ -258,10 +306,23 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  handleEsc() {
+    if (this.travelMapOpen) {
+      this.closeTravelMap();
+      return;
+    }
+    this.togglePauseMenu();
+  }
+
   handleExit(exit) {
     if (this.transitioning) return;
-    this.transitioning = true;
 
+    if (exit.outdoorExit) {
+      this.showTravelMap();
+      return;
+    }
+
+    this.transitioning = true;
     const targetLoc = getLocation(exit.target);
     if (!targetLoc) { this.transitioning = false; return; }
 
@@ -283,6 +344,170 @@ export class GameScene extends Phaser.Scene {
       this.transitioning = false;
     });
   }
+
+  // ========== TRAVEL MAP ==========
+
+  showTravelMap() {
+    if (this.travelMapOpen) return;
+    this.travelMapOpen = true;
+    this.timePaused = true;
+    this.player?.setInUI(true);
+    this.travelMapElements = [];
+
+    const cam = this.cameras.main;
+    const cx = cam.scrollX + cam.width / 2;
+    const cy = cam.scrollY + cam.height / 2;
+
+    const bg = this.add.rectangle(cx, cy, cam.width, cam.height, 0x1A1A2E, 0.92)
+      .setDepth(300).setScrollFactor(0).setOrigin(0.5);
+    this.travelMapElements.push(bg);
+
+    const mapBg = this.add.rectangle(480, 310, 700, 480, 0x3A5A8A, 1)
+      .setDepth(301).setScrollFactor(0).setOrigin(0.5);
+    this.travelMapElements.push(mapBg);
+
+    const mapInner = this.add.rectangle(480, 310, 690, 470, 0x5B9BD5, 1)
+      .setDepth(302).setScrollFactor(0).setOrigin(0.5);
+    this.travelMapElements.push(mapInner);
+
+    const landAreas = [
+      { x: 260, y: 180, w: 200, h: 120 },
+      { x: 380, y: 250, w: 280, h: 150 },
+      { x: 520, y: 160, w: 160, h: 100 },
+      { x: 580, y: 340, w: 200, h: 160 },
+    ];
+    for (const la of landAreas) {
+      const land = this.add.rectangle(la.x, la.y, la.w, la.h, 0xD5C4A1, 1)
+        .setDepth(303).setScrollFactor(0);
+      this.travelMapElements.push(land);
+    }
+
+    const canalPaths = [
+      { x1: 300, y1: 220, x2: 450, y2: 280 },
+      { x1: 450, y1: 280, x2: 550, y2: 200 },
+      { x1: 450, y1: 280, x2: 600, y2: 380 },
+    ];
+    for (const cp of canalPaths) {
+      const line = this.add.graphics().setDepth(304).setScrollFactor(0);
+      line.lineStyle(4, 0x4A8AC0, 0.6);
+      line.beginPath();
+      line.moveTo(cp.x1, cp.y1);
+      line.lineTo(cp.x2, cp.y2);
+      line.strokePath();
+      this.travelMapElements.push(line);
+    }
+
+    const title = this.add.text(480, 85, 'Amsterdam', {
+      fontSize: '24px', fontFamily: 'Georgia, serif', color: '#F5E6CC',
+      stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(310).setScrollFactor(0);
+    this.travelMapElements.push(title);
+
+    const subtitle = this.add.text(480, 110, 'Where would you like to go?', {
+      fontSize: '12px', fontFamily: 'Georgia, serif', color: '#CCBBAA',
+    }).setOrigin(0.5).setDepth(310).setScrollFactor(0);
+    this.travelMapElements.push(subtitle);
+
+    for (const conn of MAP_CONNECTIONS) {
+      const locA = LOCATIONS[conn[0]];
+      const locB = LOCATIONS[conn[1]];
+      if (!locA?.mapPosition || !locB?.mapPosition) continue;
+      const pathLine = this.add.graphics().setDepth(305).setScrollFactor(0);
+      pathLine.lineStyle(2, 0xB0A080, 0.5);
+      pathLine.beginPath();
+      pathLine.moveTo(locA.mapPosition.x, locA.mapPosition.y);
+      pathLine.lineTo(locB.mapPosition.x, locB.mapPosition.y);
+      pathLine.strokePath();
+      this.travelMapElements.push(pathLine);
+    }
+
+    const currentLocId = this.gameState.currentLocation;
+
+    for (const [locId, loc] of Object.entries(LOCATIONS)) {
+      if (!loc.mapPosition) continue;
+      const { x, y } = loc.mapPosition;
+      const isCurrent = locId === currentLocId;
+
+      const nodeKey = isCurrent ? 'map_node_current' : 'map_node';
+      const nodeFallback = this.textures.exists(nodeKey) ? nodeKey : 'map_node';
+      const node = this.add.image(x, y, nodeFallback)
+        .setDepth(306).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      this.travelMapElements.push(node);
+
+      const label = this.add.text(x, y + 16, loc.name, {
+        fontSize: '10px', fontFamily: 'Georgia, serif', color: '#F5E6CC',
+        stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(310).setScrollFactor(0);
+      this.travelMapElements.push(label);
+
+      if (!isCurrent) {
+        node.on('pointerover', () => {
+          node.setScale(1.3);
+          label.setStyle({ color: '#FFD700' });
+        });
+        node.on('pointerout', () => {
+          node.setScale(1);
+          label.setStyle({ color: '#F5E6CC' });
+        });
+        node.on('pointerdown', () => this.travelTo(locId));
+      }
+    }
+
+    const hint = this.add.text(480, 555, '[ESC] Cancel', {
+      fontSize: '11px', fontFamily: 'monospace', color: '#888',
+    }).setOrigin(0.5).setDepth(310).setScrollFactor(0);
+    this.travelMapElements.push(hint);
+  }
+
+  closeTravelMap() {
+    for (const el of this.travelMapElements) {
+      el.destroy();
+    }
+    this.travelMapElements = [];
+    this.travelMapOpen = false;
+    this.timePaused = false;
+    this.player?.setInUI(false);
+  }
+
+  travelTo(locationId) {
+    if (this.transitioning) return;
+    this.transitioning = true;
+
+    const targetLoc = getLocation(locationId);
+    if (!targetLoc) { this.transitioning = false; return; }
+
+    const currentPos = LOCATIONS[this.gameState.currentLocation]?.mapPosition;
+    const targetPos = targetLoc.mapPosition;
+    let travelTime = 10;
+    if (currentPos && targetPos) {
+      const dist = Math.sqrt((targetPos.x - currentPos.x) ** 2 + (targetPos.y - currentPos.y) ** 2);
+      travelTime = Math.round(5 + (dist / 50) * 5);
+      travelTime = Math.min(travelTime, 15);
+    }
+
+    this.gameState.time = (this.gameState.time ?? 480) + travelTime;
+
+    const spawnPos = { x: Math.floor(targetLoc.mapWidth / 2), y: Math.floor(targetLoc.mapHeight / 2) };
+    const returnExit = targetLoc.exits?.find(e => e.target === this.gameState.currentLocation);
+    if (returnExit) {
+      const offX = returnExit.x <= 0 ? 2 : returnExit.x >= targetLoc.mapWidth - 1 ? -2 : 0;
+      const offY = returnExit.y <= 0 ? 2 : returnExit.y >= targetLoc.mapHeight - 1 ? -2 : 0;
+      spawnPos.x = returnExit.x + (offX || 0);
+      spawnPos.y = returnExit.y + (offY || 1);
+    }
+
+    this.gameState.playerPos = spawnPos;
+
+    this.closeTravelMap();
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.loadLocation(locationId);
+      this.cameras.main.fadeIn(300, 0, 0, 0);
+      this.transitioning = false;
+    });
+  }
+
+  // ========== DIALOGUE & INTERACTIONS ==========
 
   startDialogue(npc) {
     const hearts = this.relationshipSystem.getHearts(npc.characterId);
@@ -368,6 +593,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   openInbox() {
+    if (this.travelMapOpen) return;
     if (this.scene.isActive('DialogueScene')) return;
     this.timePaused = true;
     this.player?.setInUI(true);
@@ -497,12 +723,45 @@ export class GameScene extends Phaser.Scene {
       npc.update(this.player?.x ?? 0, this.player?.y ?? 0);
     }
 
-    if (this.daylightOverlay) {
-      const alpha = 1 - this.timeSystem.getDaylightAlpha();
-      this.daylightOverlay.setAlpha(alpha * 0.5);
-    }
+    this.updateDaylight();
+    this.updateWaterAnimation(delta);
 
-    this.updateInteractionPrompt();
+    if (!this.travelMapOpen) {
+      this.updateInteractionPrompt();
+    }
+  }
+
+  updateDaylight() {
+    if (!this.daylightOverlay) return;
+    const hour = (this.gameState.time ?? 480) / 60;
+
+    if (hour >= 18 && hour < 20) {
+      const t = (hour - 18) / 2;
+      const r = Math.round(0x0a + t * (0xFF - 0x0a) * 0.3);
+      const gg = Math.round(0x0a + t * (0x70 - 0x0a) * 0.3);
+      const b = Math.round(0x1e + t * (0x43 - 0x1e) * 0.2);
+      this.daylightOverlay.fillColor = (r << 16) | (gg << 8) | b;
+      this.daylightOverlay.setAlpha(t * 0.25);
+    } else if (hour >= 20) {
+      this.daylightOverlay.fillColor = 0x0a0a1e;
+      const t = Math.min((hour - 20) / 3, 1);
+      this.daylightOverlay.setAlpha(0.15 + t * 0.35);
+    } else {
+      this.daylightOverlay.setAlpha(0);
+    }
+  }
+
+  updateWaterAnimation(delta) {
+    if (this.waterTiles.length === 0) return;
+    this.waterTimer += delta;
+    if (this.waterTimer < 500) return;
+    this.waterTimer = 0;
+    this.waterFrame = (this.waterFrame + 1) % 4;
+    const texKey = `tile_water_${this.waterFrame}`;
+    if (!this.textures.exists(texKey)) return;
+    for (const tile of this.waterTiles) {
+      tile.setTexture(texKey);
+    }
   }
 
   updateInteractionPrompt() {
