@@ -16,7 +16,7 @@ You are Steve, a content executive at a streaming company's Amsterdam office. Sc
 |---|---|
 | **The Notes Triangle** | Every note you give navigates tension between creative quality, filmmaker relationship, and commercial viability. There is no single correct approach. |
 | **Meaningful Conversations** | Filmmakers and colleagues are real people with distinct personalities. Talk to them. Your relationships evolve based on how you treat their work. |
-| **Simple & Focused** | No energy meters, no economy, no career ladder, no gift shop. Just scripts, notes, conversations, and consequences. |
+| **Simple & Focused** | No energy meters, no economy, no career ladder, no gift shop. Just scripts, notes, conversations, and consequences. Every decision is a binary choice — never more than two options. |
 
 ---
 
@@ -35,10 +35,10 @@ You are Steve, a content executive at a streaming company's Amsterdam office. Sc
 
 ## The Notes System
 
-When you give notes on a script, you choose:
+When you give notes on a script, you make two binary choices:
 
-- **A focus**: Dialogue, Character, Plot, Pacing, Theme, or Commercial
-- **A tone**: Supportive, Balanced, or Direct
+- **A focus** (2 options): The game identifies the script's two weakest attributes and presents them as the focus choices. You pick which weakness to address.
+- **A tone** (2 options): Supportive or Direct.
 
 Each filmmaker has a preferred tone. Match it and the relationship grows. Clash and it suffers. Meanwhile, your notes affect the script's quality attributes — but only if you target a genuine weakness. The tension between being honest, being kind, and being commercial is the whole game.
 
@@ -60,9 +60,9 @@ Simple indoor exit connects the two. No travel map.
 **5 Filmmakers** — each with a unique personality and preferred note tone:
 
 - **Katrien van der Berg** — The auteur. Prefers gentle notes. Brilliant if trusted.
-- **Marco Rossi** — The newcomer. Prefers balanced notes. Eager and grateful.
+- **Marco Rossi** — The newcomer. Prefers supportive notes. Eager and grateful.
 - **Helena Johansson** — The veteran. Prefers direct notes. Respects honesty.
-- **Jake Morrison** — The hitmaker. Prefers balanced notes. Commercially driven, secretly wants art.
+- **Jake Morrison** — The hitmaker. Prefers direct notes. Commercially driven, secretly wants art.
 - **Yuki Tanaka** — The festival darling. Prefers gentle notes. Critically adored, commercially invisible.
 
 **3 Colleagues** — for fun conversations:

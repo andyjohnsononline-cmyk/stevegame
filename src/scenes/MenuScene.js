@@ -42,16 +42,21 @@ export class MenuScene extends Phaser.Scene {
       color: '#8B6914',
     }).setOrigin(0.5);
 
-    let buttonY = 290;
-    this._createButton(cx, buttonY, 'New Game', () => this.startNewGame());
+    const hasSave = SaveSystem.hasSave();
+    if (hasSave) {
+      this._createButton(cx, 290, 'Continue', () => this.continueGame());
+      this._createButton(cx, 350, 'How to Play', () => this.showHowToPlay());
 
-    if (SaveSystem.hasSave()) {
-      buttonY += 60;
-      this._createButton(cx, buttonY, 'Continue', () => this.continueGame());
+      const newLink = this.add.text(cx, 410, 'or start a new game', {
+        fontSize: '12px', fontFamily: 'Georgia, serif', color: DIM_COLOR,
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+        .on('pointerover', () => newLink.setColor(HIGHLIGHT))
+        .on('pointerout', () => newLink.setColor(DIM_COLOR))
+        .on('pointerdown', () => this.startNewGame());
+    } else {
+      this._createButton(cx, 290, 'New Game', () => this.startNewGame());
+      this._createButton(cx, 350, 'How to Play', () => this.showHowToPlay());
     }
-
-    buttonY += 60;
-    this._createButton(cx, buttonY, 'How to Play', () => this.showHowToPlay());
 
     this.add.text(cx, h - 90, 'You are Steve, a content executive at a\nstreaming company\'s Amsterdam office.\nRead scripts. Give notes. Talk to people.', {
       fontSize: '11px',
@@ -122,8 +127,8 @@ export class MenuScene extends Phaser.Scene {
       '  Quality ....... How good the script actually becomes',
       '  Relationship .. How the filmmaker feels about you',
       '  Commercial .... Whether the project will find an audience',
-      'There is no single right answer. Pay attention to each',
-      "filmmaker's preferred tone.",
+      'Each script presents two focus areas and two tones.',
+      "Pay attention to each filmmaker's preferred tone.",
     ]);
 
     section('Tips', [

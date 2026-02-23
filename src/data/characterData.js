@@ -51,11 +51,11 @@ export const CHARACTERS = [
   {
     id: 'marco',
     type: 'newcomer',
-    notePreference: 'balanced',
+    notePreference: 'gentle',
     name: 'Marco Rossi',
     role: 'filmmaker',
     personality: 'Eager, raw talent, needs guidance. Hungry to learn and grateful for any feedback. Sometimes too eager.',
-    preferredTone: 'balanced',
+    preferredTone: 'gentle',
     dialoguePool: {
       greeting: [
         'Steve! Oh my god, hi! I\'ve been hoping I\'d run into you.',
@@ -149,11 +149,11 @@ export const CHARACTERS = [
   {
     id: 'jake',
     type: 'hitmaker',
-    notePreference: 'balanced',
+    notePreference: 'direct',
     name: 'Jake Morrison',
     role: 'filmmaker',
     personality: 'Commercial success, secretly wants art. LA-trained, numbers-driven, but carries a Criterion subscription he never mentions.',
-    preferredTone: 'balanced',
+    preferredTone: 'direct',
     dialoguePool: {
       greeting: [
         'Steve. Let\'s skip the pleasantries. What\'s the number?',
@@ -247,11 +247,11 @@ export const CHARACTERS = [
   {
     id: 'bernie',
     type: 'boss',
-    notePreference: 'balanced',
+    notePreference: 'direct',
     name: "Bernard 'Bernie' Okafor",
     role: 'colleague',
     personality: 'VP of Content. Values bold bets. Seen it all, still believes in the work. Demanding but fair.',
-    preferredTone: 'balanced',
+    preferredTone: 'direct',
     dialoguePool: {
       greeting: [
         'Steve. My office. We need to talk about the pipeline.',

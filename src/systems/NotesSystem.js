@@ -8,7 +8,7 @@ export class NotesSystem {
 
   applyNote(script, focusId, toneId) {
     const filmmaker = getCharacter(script.filmmakerIndex);
-    const raw = filmmaker?.notePreference ?? filmmaker?.preferredTone ?? 'balanced';
+    const raw = filmmaker?.notePreference ?? filmmaker?.preferredTone ?? 'supportive';
     const filmmakerPreference = raw === 'gentle' ? 'supportive' : raw;
     const scriptQuality = script.quality ?? { character: 5, plot: 5, dialogue: 5, originality: 5, commercial: 5 };
 
