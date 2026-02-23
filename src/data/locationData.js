@@ -8,6 +8,7 @@ export const LOCATIONS = {
     outdoors: false,
     tileFloor: 'tile_wood_floor',
     tileWall: 'tile_wall',
+    mapPosition: { x: 320, y: 280 },
     interactables: [
       { x: 9, y: 2, type: 'bed', action: 'sleep', label: 'Bed (Sleep & Save)' },
       { x: 2, y: 2, type: 'coffee_machine', action: 'make_coffee', label: 'Coffee Machine' },
@@ -39,6 +40,7 @@ export const LOCATIONS = {
     outdoors: false,
     tileFloor: 'tile_office_floor',
     tileWall: 'tile_brick_wall',
+    mapPosition: { x: 580, y: 180 },
     interactables: [
       { type: 'table', x: 3, y: 10, action: 'sit', label: 'Cafe table' },
       { type: 'table', x: 6, y: 10, action: 'sit', label: 'Cafe table' },
@@ -55,7 +57,7 @@ export const LOCATIONS = {
     ],
     exits: [
       { x: 8, y: 0, target: 'office_upper', label: 'Stairs up' },
-      { x: 8, y: 13, target: 'canal_walk', label: 'To canal' },
+      { x: 8, y: 13, target: 'canal_walk', label: 'Go outside', outdoorExit: true },
     ],
     wallMap: [
       [1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1],
@@ -83,6 +85,7 @@ export const LOCATIONS = {
     outdoors: false,
     tileFloor: 'tile_office_floor',
     tileWall: 'tile_wall',
+    mapPosition: { x: 580, y: 120 },
     interactables: [
       { type: 'desk', x: 3, y: 6, action: 'work', label: "Steve's Desk" },
       { type: 'desk', x: 6, y: 4, action: 'browse', label: 'Colleague desk' },
@@ -123,6 +126,7 @@ export const LOCATIONS = {
     outdoors: true,
     tileFloor: 'tile_cobblestone',
     tileWall: 'tile_water',
+    mapPosition: { x: 480, y: 320 },
     interactables: [
       { type: 'bench', x: 3, y: 3, action: 'sit', label: 'Canal bench' },
       { type: 'bench', x: 16, y: 3, action: 'sit', label: 'Canal bench' },
@@ -138,9 +142,9 @@ export const LOCATIONS = {
       { x: 15, y: 8 },
     ],
     exits: [
-      { x: 10, y: 0, target: 'office_ground', label: 'To office' },
-      { x: 19, y: 6, target: 'market', label: 'To market' },
-      { x: 10, y: 11, target: 'cafe', label: 'To cafe' },
+      { x: 10, y: 0, target: 'office_ground', label: 'To office', outdoorExit: true },
+      { x: 19, y: 6, target: 'market', label: 'To market', outdoorExit: true },
+      { x: 10, y: 11, target: 'cafe', label: 'To cafe', outdoorExit: true },
     ],
     wallMap: [
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -166,6 +170,7 @@ export const LOCATIONS = {
     outdoors: false,
     tileFloor: 'tile_wood_floor',
     tileWall: 'tile_brick_wall',
+    mapPosition: { x: 380, y: 360 },
     interactables: [
       { type: 'table', x: 7, y: 2, action: 'order_drink', label: 'Bar' },
       { type: 'table', x: 3, y: 5, action: 'sit', label: 'Corner table' },
@@ -182,7 +187,7 @@ export const LOCATIONS = {
     ],
     exits: [
       { x: 7, y: 0, target: 'houseboat', label: 'To Houseboat' },
-      { x: 7, y: 11, target: 'canal_walk', label: 'Go outside (Canals)' },
+      { x: 7, y: 11, target: 'canal_walk', label: 'Go outside', outdoorExit: true },
     ],
     wallMap: [
       [1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1],
@@ -208,6 +213,7 @@ export const LOCATIONS = {
     outdoors: true,
     tileFloor: 'tile_market_ground',
     tileWall: 'tile_cobblestone',
+    mapPosition: { x: 700, y: 420 },
     interactables: [
       { type: 'gift_vendor', x: 3, y: 2, action: 'buy_gift', label: 'Gift vendor' },
       { type: 'stall', x: 7, y: 2, action: 'browse', label: 'Flower stall' },
@@ -222,7 +228,7 @@ export const LOCATIONS = {
       { x: 6, y: 8 },
       { x: 10, y: 8 },
     ],
-    exits: [{ x: 0, y: 6, target: 'canal_walk', label: 'To canal' }],
+    exits: [{ x: 0, y: 6, target: 'canal_walk', label: 'Go outside', outdoorExit: true }],
     wallMap: [
       [1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1],
       [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],

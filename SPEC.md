@@ -173,7 +173,15 @@ Steve's houseboat apartment on the Prinsengracht serves as the Stardew farmhouse
 
 Stepping outside the houseboat leads directly into the Brown Café ('t Smalle), the social hub where streaming company executives congregate. From the café, Steve can head outside to the Jordaan Canals for walks, smoke breaks, and access to the rest of Amsterdam.
 
-### 7.4 Random Events & Crises
+### 7.4 The Travel Map
+
+When leaving any indoor location to the outside world, a stylised top-down map of Amsterdam appears. The map shows all discovered locations as labelled nodes connected by canal and street paths. The player clicks a destination to travel there directly, with a small time cost (5–15 game-minutes) proportional to the distance. This replaces the need to walk through intermediate outdoor areas for routine navigation while preserving the sense of Amsterdam as a real, connected city.
+
+Interior transitions remain direct: stepping between floors of the office, or walking from the houseboat into the adjacent café, happens with a simple fade—no map needed. The map only appears when Steve steps outside into the city.
+
+Locations unlock progressively as Steve's career advances. Early in the game only the café, canals, and office are accessible. The market, cinemas, and Vondelpark become available as Steve earns promotions and builds relationships. Newly unlocked locations pulse gently on the map to draw the player's attention.
+
+### 7.5 Random Events & Crises
 
 The game regularly introduces unpredictable events that disrupt routine and demand creative problem-solving: a lead actor drops out mid-production; a script leaks online and causes a PR crisis; a filmmaker has a creative breakthrough that requires budget reallocation; a competing streamer announces a suspiciously similar project; a Dutch cycling strike makes getting to the office an adventure. These events keep the simulation from becoming rote and create emergent storytelling moments.
 
@@ -183,7 +191,9 @@ The game regularly introduces unpredictable events that disrupt routine and dema
 
 ### 8.1 Visual Style
 
-The game uses a top-down pixel art style directly descended from Stardew Valley, but with a distinctly European urban palette. Warm oranges and deep blues dominate the Amsterdam exteriors, evoking the city's famous golden-age lighting. Interiors are modern and design-forward, reflecting the tech-company aesthetic of the office contrasted with the cosy, cluttered warmth of brown cafés and Steve's houseboat. Characters are expressive 32x32 sprites with portrait art for dialogue scenes.
+The game uses a top-down pixel art style directly descended from Stardew Valley, but with a distinctly European urban palette. Warm oranges and deep blues dominate the Amsterdam exteriors, evoking the city's famous golden-age lighting. Interiors are modern and design-forward, reflecting the tech-company aesthetic of the office contrasted with the cosy, cluttered warmth of brown cafés and Steve's houseboat. Characters are expressive 16x32 sprites with eyes, directional facing, and multi-frame walk cycles. All visuals are procedurally generated at runtime from code—no external sprite sheet assets—using detailed shading, dithering, sub-pixel patterns, and colour variation to achieve a handcrafted pixel art feel.
+
+Environmental effects reinforce atmosphere: animated water ripples on canal tiles, rain particles during outdoor scenes, warm orange lighting at dusk shifting to deep blue at night, and ambient touches like drifting leaves. The travel map is rendered as a stylised bird's-eye illustration of Amsterdam's canal ring with location nodes and path connections.
 
 ### 8.2 Audio
 
