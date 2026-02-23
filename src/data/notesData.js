@@ -74,7 +74,7 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-export function calculateNoteEffect(focusId, toneId, scriptQuality, filmmakerPreference) {
+export function calculateNoteEffect(focusId, toneId, scriptQuality, filmmakerPreference, trustLevel = 0) {
   const focus = NOTE_FOCUSES.find(f => f.id === focusId);
   const tone = NOTE_TONES.find(t => t.id === toneId);
   if (!focus || !tone) {
@@ -97,12 +97,19 @@ export function calculateNoteEffect(focusId, toneId, scriptQuality, filmmakerPre
     relationshipChange -= 1;
   }
 
+  // Trust reduces relationship penalty and boosts quality impact
+  const trustRelBonus = trustLevel >= 2 ? 0.5 : trustLevel >= 1 ? 0.3 : 0;
+  const trustQualBonus = trustLevel >= 2 ? 2 : trustLevel >= 1 ? 1 : 0;
+  if (relationshipChange < 0) {
+    relationshipChange += trustRelBonus;
+  }
+
   let baseDelta = 0;
   let feedbackKey;
 
   if (isWeak) {
-    baseDelta = Math.round(2 * tone.qualityMod);
-    baseDelta = Math.min(baseDelta, 3);
+    baseDelta = Math.round(2 * tone.qualityMod) + trustQualBonus;
+    baseDelta = Math.min(baseDelta, 5);
     feedbackKey = `${targetAttr}_positive`;
   } else if (isStrong) {
     if (Math.random() < tone.riskFactor) {
@@ -112,7 +119,7 @@ export function calculateNoteEffect(focusId, toneId, scriptQuality, filmmakerPre
       feedbackKey = 'neutral';
     }
   } else {
-    baseDelta = Math.round(1 * tone.qualityMod);
+    baseDelta = Math.round(1 * tone.qualityMod) + trustQualBonus;
     feedbackKey = `${targetAttr}_positive`;
   }
 

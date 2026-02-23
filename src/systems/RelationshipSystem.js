@@ -23,8 +23,18 @@ export class RelationshipSystem {
     const gs = this.scene.gameState;
     if (!gs?.relationships) return;
     const current = gs.relationships[npcId] ?? 0;
-    gs.relationships[npcId] = Math.max(0, Math.min(10, current + amount));
-    this.scene.events?.emit('relationship-changed', { npcId, hearts: gs.relationships[npcId] });
+    const updated = Math.max(0, Math.min(10, current + amount));
+    gs.relationships[npcId] = updated;
+    this.scene.events?.emit('relationship-changed', { npcId, hearts: updated });
+
+    const milestones = [5, 10];
+    for (const m of milestones) {
+      if (current < m && updated >= m) {
+        this.scene.levelSystem?.addXP(3);
+        this.scene.events?.emit('activity-message',
+          `Milestone: reached ${m} hearts with ${npcId}! +3 XP`);
+      }
+    }
   }
 
   getDialogue(npcId, type) {
