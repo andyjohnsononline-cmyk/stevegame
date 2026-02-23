@@ -16,7 +16,7 @@ export const LOCATIONS = {
       { x: 3, y: 7, type: 'bookshelf', action: 'browse', label: 'Bookshelf' },
     ],
     npcSpots: [{ x: 7, y: 6 }],
-    exits: [{ x: 6, y: 9, target: 'canal_walk', label: 'Go outside' }],
+    exits: [{ x: 6, y: 9, target: 'cafe', label: 'Go to Cafe' }],
     wallMap: [
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
       [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
@@ -127,6 +127,7 @@ export const LOCATIONS = {
       { type: 'bench', x: 3, y: 3, action: 'sit', label: 'Canal bench' },
       { type: 'bench', x: 16, y: 3, action: 'sit', label: 'Canal bench' },
       { type: 'tree', x: 10, y: 2, action: 'admire', label: 'Old elm tree' },
+      { type: 'smoking_area', x: 17, y: 9, action: 'smoke', label: 'Smoking area' },
     ],
     npcSpots: [
       { x: 5, y: 5 },
@@ -137,13 +138,12 @@ export const LOCATIONS = {
       { x: 15, y: 8 },
     ],
     exits: [
-      { x: 6, y: 0, target: 'houseboat', label: 'To houseboat' },
       { x: 10, y: 0, target: 'office_ground', label: 'To office' },
       { x: 19, y: 6, target: 'market', label: 'To market' },
       { x: 10, y: 11, target: 'cafe', label: 'To cafe' },
     ],
     wallMap: [
-      [1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
       [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
       [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
       [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
@@ -160,7 +160,7 @@ export const LOCATIONS = {
   cafe: {
     id: 'cafe',
     name: "Brown Cafe 't Smalle",
-    description: 'A warm, cozy brown cafe. Dark wood, low lighting, and the clink of glasses.',
+    description: 'A warm, cozy brown cafe where streaming company executives gather. Dark wood, low lighting, and industry gossip over borrels.',
     mapWidth: 14,
     mapHeight: 12,
     outdoors: false,
@@ -180,9 +180,12 @@ export const LOCATIONS = {
       { x: 11, y: 3 },
       { x: 5, y: 9 },
     ],
-    exits: [{ x: 7, y: 11, target: 'canal_walk', label: 'To canal' }],
+    exits: [
+      { x: 7, y: 0, target: 'houseboat', label: 'To Houseboat' },
+      { x: 7, y: 11, target: 'canal_walk', label: 'Go outside (Canals)' },
+    ],
     wallMap: [
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1],
       [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
       [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
       [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],

@@ -314,6 +314,7 @@ export class GameScene extends Phaser.Scene {
       case 'sit': this.showMessage(this._flavorText('sit')); break;
       case 'admire': this.showMessage(this._flavorText('admire')); break;
       case 'browse': this.showMessage(this._flavorText('browse')); break;
+      case 'smoke': this.handleSmoke(); break;
       default: this.showMessage(obj.label ?? 'Nothing happens.');
     }
   }
@@ -352,6 +353,18 @@ export class GameScene extends Phaser.Scene {
     this.energySystem.spend('socialize');
     this.gameState.time = (this.gameState.time ?? 480) + 30;
     this.showMessage('You enjoy a borrel at the bar. Gezellig.');
+  }
+
+  handleSmoke() {
+    this.gameState.time = (this.gameState.time ?? 480) + 15;
+    this.energySystem.restore(1);
+    const lines = [
+      'You light up by the canal. The water glimmers. +1 Energy.',
+      'A quiet smoke break. Barges drift by. +1 Energy.',
+      'You watch the cyclists pass, cigarette in hand. +1 Energy.',
+      'The canal air mixes with smoke. A moment of calm. +1 Energy.',
+    ];
+    this.showMessage(lines[Math.floor(Math.random() * lines.length)]);
   }
 
   openInbox() {
