@@ -12,7 +12,10 @@ export class NotesSystem {
     const filmmakerPreference = raw === 'gentle' ? 'supportive' : raw;
     const scriptQuality = script.quality ?? { character: 5, plot: 5, dialogue: 5, originality: 5, commercial: 5 };
 
-    const effect = calculateNoteEffect(focusId, toneId, scriptQuality, filmmakerPreference);
+    const hearts = this.scene.relationshipSystem?.getHearts(filmmaker?.id) ?? 0;
+    const trustLevel = hearts >= 8 ? 2 : hearts >= 5 ? 1 : 0;
+
+    const effect = calculateNoteEffect(focusId, toneId, scriptQuality, filmmakerPreference, trustLevel);
 
     for (const [attr, delta] of Object.entries(effect.qualityChanges)) {
       if (script.quality[attr] !== undefined) {

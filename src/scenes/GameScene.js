@@ -6,8 +6,10 @@ import { ScriptEngine } from '../systems/ScriptEngine.js';
 import { NotesSystem } from '../systems/NotesSystem.js';
 import { RelationshipSystem } from '../systems/RelationshipSystem.js';
 import { PipelineSystem } from '../systems/PipelineSystem.js';
+import { LevelSystem } from '../systems/LevelSystem.js';
 import { SaveSystem } from '../utils/SaveSystem.js';
 import { getLocation } from '../data/locationData.js';
+import { getDialogueChoice } from '../data/dialogueChoiceData.js';
 
 const TILE = 32;
 
@@ -47,7 +49,10 @@ export class GameScene extends Phaser.Scene {
     this.notesSystem = new NotesSystem(this);
     this.relationshipSystem = new RelationshipSystem(this);
     this.pipelineSystem = new PipelineSystem(this);
+    this.levelSystem = new LevelSystem(this);
     this.pipelineSystem.migrateScripts();
+
+    if (this.gameState.budget === undefined) this.gameState.budget = 300;
 
     if (!this.gameState.inbox) this.gameState.inbox = [];
     if (this.gameState.inbox.length === 0) {
@@ -267,20 +272,32 @@ export class GameScene extends Phaser.Scene {
   startDialogue(npc) {
     const charData = npc.getCharacterData();
     const hearts = this.relationshipSystem.getHearts(npc.characterId);
-    const dialogue = npc.getDialogue(hearts);
-    if (!dialogue) return;
 
-    this.relationshipSystem.addHearts(npc.characterId, 0.1);
+    const choice = getDialogueChoice(npc.characterId, hearts);
+
     this.timePaused = true;
     this.player.setInUI(true);
 
-    this.scene.launch('DialogueScene', {
-      gameScene: this,
-      mode: 'dialogue',
-      speakerName: charData.name,
-      text: dialogue,
-      characterId: npc.characterId,
-    });
+    if (choice) {
+      this.scene.launch('DialogueScene', {
+        gameScene: this,
+        mode: 'dialogue_choice',
+        speakerName: charData.name,
+        characterId: npc.characterId,
+        choiceData: choice,
+      });
+    } else {
+      const dialogue = npc.getDialogue(hearts);
+      if (!dialogue) { this.resumeFromUI(); return; }
+      this.relationshipSystem.addHearts(npc.characterId, 0.1);
+      this.scene.launch('DialogueScene', {
+        gameScene: this,
+        mode: 'dialogue',
+        speakerName: charData.name,
+        text: dialogue,
+        characterId: npc.characterId,
+      });
+    }
   }
 
   handleObjectInteraction(obj) {

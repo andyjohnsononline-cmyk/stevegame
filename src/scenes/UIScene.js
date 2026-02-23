@@ -41,6 +41,33 @@ export class UIScene extends Phaser.Scene {
     this.clockText = this.add.text(60, 8, '', style).setDepth(1);
     this.dayText = this.add.text(180, 8, '', style).setDepth(1);
 
+    this.budgetText = this.add.text(310, 8, '', {
+      fontSize: '13px', fontFamily: 'monospace', color: '#4CAF50',
+    }).setDepth(1);
+
+    const titleStyle = { fontSize: '10px', fontFamily: 'monospace', color: HIGHLIGHT };
+    this.levelText = this.add.text(480, 5, '', titleStyle).setOrigin(0.5, 0).setDepth(1);
+    this.xpText = this.add.text(480, 18, '', {
+      fontSize: '9px', fontFamily: 'monospace', color: DIM_COLOR,
+    }).setOrigin(0.5, 0).setDepth(1);
+
+    const xpBarW = 80;
+    const xpBarH = 4;
+    const xpBarX = 480 - xpBarW / 2;
+    const xpBarY = 30;
+    this.xpBarBg = this.add.rectangle(xpBarX + xpBarW / 2, xpBarY + xpBarH / 2,
+      xpBarW, xpBarH, 0x222244, 1).setDepth(1);
+    this.xpBarFill = this.add.rectangle(xpBarX, xpBarY,
+      1, xpBarH, 0xD4721A, 1).setOrigin(0, 0).setDepth(2);
+
+    this.slotsText = this.add.text(660, 8, '', {
+      fontSize: '11px', fontFamily: 'monospace', color: DIM_COLOR,
+    }).setDepth(1);
+
+    this.gameScene.events.on('level-up', ({ level, title, maxSlots }) => {
+      this.showNotification(`Level Up! ${title} (${maxSlots} pipeline slots)`, HIGHLIGHT);
+    });
+
     // --- Controls hint ---
     this.controlsText = this.add.text(480, 632, 'ARROWS/WASD: Move | SPACE: Interact | TAB: Inbox | ESC: Menu', {
       fontSize: '9px', fontFamily: 'monospace', color: '#555577',
@@ -318,6 +345,23 @@ export class UIScene extends Phaser.Scene {
 
     this.clockText.setText(ts.getTimeString());
     this.dayText.setText(`Day ${gs.day}`);
+
+    const budget = gs.budget ?? 0;
+    this.budgetText.setText(`$${budget}K`);
+    this.budgetText.setStyle({ color: budget > 100 ? '#4CAF50' : budget > 50 ? '#FFC107' : '#F44336' });
+
+    const ls = this.gameScene.levelSystem;
+    if (ls) {
+      this.levelText.setText(ls.getTitle());
+      const nextXP = ls.getXPForNextLevel();
+      this.xpText.setText(nextXP !== null ? `XP: ${ls.getXP()}/${nextXP}` : `XP: ${ls.getXP()} (MAX)`);
+      const progress = ls.getXPProgress();
+      this.xpBarFill.setDisplaySize(Math.max(1, 80 * progress), 4);
+
+      const maxSlots = ls.getMaxSlots();
+      const used = (gs.pipeline ?? []).length;
+      this.slotsText.setText(`Slots: ${used}/${maxSlots}`);
+    }
 
     this._updatePipelinePanel();
     this._updateRelationshipPanel();

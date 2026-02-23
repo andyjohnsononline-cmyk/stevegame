@@ -42,6 +42,9 @@ export class SaveSystem {
       flags: {},
       currentLocation: 'houseboat',
       playerPos: { x: 5, y: 5 },
+      budget: 300,
+      xp: 0,
+      level: 1,
     };
   }
 }

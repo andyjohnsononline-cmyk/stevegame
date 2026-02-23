@@ -175,7 +175,12 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-export function generateScript(id, filmmakerIndex) {
+const GENRE_BASE_COST = {
+  thriller: 90, drama: 70, comedy: 60, sci_fi: 130,
+  horror: 65, romance: 55, documentary: 50, animation: 120,
+};
+
+export function generateScript(id, filmmakerIndex, heartsBonus = 0) {
   const premise = pickRandom(PREMISES);
   const compatibleGenres = GENRES.filter(g => premise.compatibleGenres.includes(g.id));
   const genre = pickRandom(compatibleGenres.length > 0 ? compatibleGenres : GENRES);
@@ -186,11 +191,16 @@ export function generateScript(id, filmmakerIndex) {
 
   const title = premise.titleTemplate.replace('{genre}', genre.name);
 
-  const character = randRange(...archetype.depthRange);
-  const plot = randRange(3, 8);
-  const dialogue = randRange(...dialogueStyle.qualityRange);
-  const originality = Math.min(10, randRange(3, 7) + theme.originalityBonus);
-  const commercial = randRange(2, 8);
+  const bonus = Math.floor(heartsBonus);
+  const character = Math.min(10, randRange(...archetype.depthRange) + bonus);
+  const plot = Math.min(10, randRange(3, 8) + bonus);
+  const dialogue = Math.min(10, randRange(...dialogueStyle.qualityRange) + bonus);
+  const originality = Math.min(10, randRange(3, 7) + theme.originalityBonus + bonus);
+  const commercial = Math.min(10, randRange(2, 8) + bonus);
+
+  const baseCost = GENRE_BASE_COST[genre.id] ?? 80;
+  const commercialDiscount = Math.max(0, commercial - 5) * 5;
+  const cost = Math.max(30, baseCost - commercialDiscount + randRange(-10, 10));
 
   return {
     id,
@@ -210,6 +220,7 @@ export function generateScript(id, filmmakerIndex) {
     filmmakerIndex,
     filmmakerName: FILMMAKER_NAMES[filmmakerIndex] ?? 'Unknown',
     quality: { character, plot, dialogue, originality, commercial },
+    cost,
     skimmed: false,
     read: false,
     notes: [],

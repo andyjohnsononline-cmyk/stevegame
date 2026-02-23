@@ -66,18 +66,32 @@ export class PipelineSystem {
   releaseScript(script) {
     const scriptEngine = this.scene.scriptEngine;
     const avgQuality = scriptEngine?.getAverageQuality(script) ?? 5;
+    const gs = this.scene.gameState;
 
     script.stage = 'released';
-    script.releasedDay = this.scene.gameState.day;
+    script.releasedDay = gs.day;
 
+    let revenue, xp, message;
     if (avgQuality >= 8) {
-      return `"${script.title}" released to critical acclaim! A triumph.`;
+      revenue = 200; xp = 8;
+      message = `"${script.title}" released to critical acclaim! A triumph.`;
     } else if (avgQuality >= 6) {
-      return `"${script.title}" released to positive reviews. Solid work.`;
+      revenue = 120; xp = 6;
+      message = `"${script.title}" released to positive reviews. Solid work.`;
     } else if (avgQuality >= 4) {
-      return `"${script.title}" released to mixed reviews. Could have been better.`;
+      revenue = 60; xp = 4;
+      message = `"${script.title}" released to mixed reviews. Could have been better.`;
+    } else {
+      revenue = 20; xp = 2;
+      message = `"${script.title}" released to poor reviews. A learning experience.`;
     }
-    return `"${script.title}" released to poor reviews. A learning experience.`;
+
+    gs.budget = (gs.budget ?? 0) + revenue;
+    this.scene.events?.emit('activity-message', `Revenue: +$${revenue}K from "${script.title}"`);
+
+    this.scene.levelSystem?.addXP(xp);
+
+    return message;
   }
 
   _getStage(progressMinutes) {

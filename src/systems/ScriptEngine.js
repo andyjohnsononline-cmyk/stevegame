@@ -8,7 +8,16 @@ export class ScriptEngine {
 
   generateNewScript(filmmakerIndex) {
     const id = this.nextId++;
-    return generateScript(id, filmmakerIndex);
+    const hearts = this.scene.relationshipSystem?.getHearts(
+      this._filmmakerIdByIndex(filmmakerIndex)
+    ) ?? 0;
+    const heartsBonus = hearts >= 8 ? 2 : hearts >= 5 ? 1 : 0;
+    return generateScript(id, filmmakerIndex, heartsBonus);
+  }
+
+  _filmmakerIdByIndex(index) {
+    const ids = ['katrien', 'marco', 'helena', 'jake', 'yuki'];
+    return ids[index] ?? null;
   }
 
   populateInbox(count = 2) {
