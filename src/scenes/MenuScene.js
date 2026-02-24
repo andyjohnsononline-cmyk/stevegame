@@ -119,7 +119,7 @@ export class MenuScene extends Phaser.Scene {
       'Scripts arrive in your inbox each morning.',
       'Read them, then give notes or greenlight them.',
       'Walk to the cafe to talk to filmmakers and colleagues.',
-      'Go home and sleep to start a new day.',
+      'Days advance automatically at midnight.',
     ]);
 
     section('The Notes Triangle', [

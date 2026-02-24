@@ -23,14 +23,12 @@ You are Steve, a content executive at a streaming company's Amsterdam office. Sc
 
 ## Core Loop
 
-1. **Wake up** on your houseboat
-2. **Walk to your desk** — open your inbox, read scripts
-3. **Give notes** — choose a focus area and a tone
-4. **See the consequences** — script quality shifts, filmmaker relationship shifts
-5. **Greenlight or pass** — greenlit scripts enter development
-6. **Walk to the cafe** — talk to filmmakers and colleagues
-7. **Go home and sleep** — day advances
-8. **Repeat** — new scripts arrive, pipeline processes, released scripts show results
+1. **Walk to your desk** — open your inbox, read scripts
+2. **Give notes** — choose a focus area and a tone
+3. **See the consequences** — script quality shifts, filmmaker relationship shifts
+4. **Greenlight or pass** — greenlit scripts enter development
+5. **Walk to the cafe** — talk to filmmakers and colleagues
+6. **Repeat** — days advance automatically at midnight, new scripts arrive each morning, pipeline processes, released scripts show results
 
 ---
 
@@ -51,7 +49,7 @@ Each filmmaker has a preferred tone. Match it and the relationship grows. Clash 
 
 | Location | Purpose |
 |---|---|
-| **Steve's Houseboat** | Your desk (read scripts), your bed (sleep to end the day) |
+| **Steve's Houseboat** | Your desk (read scripts), your bed (save your game) |
 | **Brown Cafe 't Smalle** | Where everyone hangs out. Talk to filmmakers and colleagues. |
 
 Simple indoor exit connects the two. No travel map.
@@ -86,7 +84,7 @@ All NPCs hang out at the cafe. Conversations are binary dialogue choices — eac
 
 ## Pipeline
 
-Greenlit scripts enter **development** for 3 game-days (2880 game-minutes), progressing through three visible sub-stages:
+Greenlit scripts enter **development** for 1 game-day (960 game-minutes), progressing through three visible sub-stages:
 
 | Stage | Progress Range | Description |
 |---|---|---|
@@ -94,7 +92,7 @@ Greenlit scripts enter **development** for 3 game-days (2880 game-minutes), prog
 | **Production** | 33–66% | Filming and principal photography |
 | **Post-Production** | 66–100% | Editing, sound, and finishing |
 
-Progress ticks forward in real-time as the game clock runs (not only on sleep). On completion, you get a quality-based result message and revenue:
+Progress ticks forward in real-time as the game clock runs. On completion, you get a quality-based result message and revenue:
 
 | Result | Quality Threshold | Revenue | XP |
 |---|---|---|---|
@@ -162,7 +160,7 @@ The screen has three persistent idler-style overlays that keep the world feeling
 
 ## Time
 
-Each day runs from 8:00 AM to midnight. Time passes as you read scripts, give notes, and explore. The pipeline progresses continuously while time is running. Sleep advances to the next day. New scripts arrive each morning.
+Each day runs from 8:00 AM to midnight. Time passes at 20 game-minutes per real second as you read scripts, give notes, and explore. The pipeline progresses continuously while time is running. Days advance automatically at midnight. New scripts arrive each morning.
 
 ---
 

@@ -52,6 +52,8 @@ export class GameScene extends Phaser.Scene {
     this.levelSystem = new LevelSystem(this);
     this.pipelineSystem.migrateScripts();
 
+    this.events.on('day-advanced', () => this._onNewDay());
+
     if (this.gameState.budget === undefined) this.gameState.budget = 300;
 
     if (!this.gameState.inbox) this.gameState.inbox = [];
@@ -302,28 +304,16 @@ export class GameScene extends Phaser.Scene {
 
   handleObjectInteraction(obj) {
     switch (obj.action) {
-      case 'sleep': this.handleSleep(); break;
+      case 'save':
+        SaveSystem.save(this.gameState);
+        this.showMessage('Game saved.');
+        break;
       case 'read_scripts':
       case 'work': this.openInbox(); break;
       case 'sit': this.showMessage(this._flavorText('sit')); break;
       case 'browse': this.showMessage(this._flavorText('browse')); break;
       default: this.showMessage(obj.label ?? 'Nothing happens.');
     }
-  }
-
-  handleSleep() {
-    const h = Math.floor((this.gameState.time ?? 480) / 60);
-    if (h < 18) {
-      this.showMessage("It's too early to sleep. Enjoy the day first.");
-      return;
-    }
-    this.showMessage('Sleeping... Sweet dreams, Steve.');
-    SaveSystem.save(this.gameState);
-
-    this.time.delayedCall(1200, () => {
-      this.timeSystem.advanceDay();
-      this._onNewDay();
-    });
   }
 
   openInbox() {
@@ -389,12 +379,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.timePaused) {
       this.timeSystem.update(delta);
 
-      const gameMinutes = (delta / 1000) * 10;
+      const gameMinutes = (delta / 1000) * 20;
       this.pipelineSystem.update(gameMinutes);
-
-      if ((this.gameState.time ?? 480) >= 1380) {
-        this.showMessage("It's getting very late. Head home to sleep.");
-      }
     }
 
     if (this.player && !this.player.isInUI) {
