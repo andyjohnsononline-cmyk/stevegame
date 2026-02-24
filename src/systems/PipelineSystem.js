@@ -71,20 +71,25 @@ export class PipelineSystem {
     script.stage = 'released';
     script.releasedDay = gs.day;
 
-    let revenue, xp, message;
+    let revenue, xp, resultTier, message;
     if (avgQuality >= 8) {
-      revenue = 200; xp = 8;
+      revenue = 200; xp = 8; resultTier = 'Critical Acclaim';
       message = `"${script.title}" released to critical acclaim! A triumph.`;
     } else if (avgQuality >= 6) {
-      revenue = 120; xp = 6;
+      revenue = 120; xp = 6; resultTier = 'Positive Reviews';
       message = `"${script.title}" released to positive reviews. Solid work.`;
     } else if (avgQuality >= 4) {
-      revenue = 60; xp = 4;
+      revenue = 60; xp = 4; resultTier = 'Mixed Reviews';
       message = `"${script.title}" released to mixed reviews. Could have been better.`;
     } else {
-      revenue = 20; xp = 2;
+      revenue = 20; xp = 2; resultTier = 'Poor Reviews';
       message = `"${script.title}" released to poor reviews. A learning experience.`;
     }
+
+    script.resultTier = resultTier;
+    script.revenue = revenue;
+    script.xpEarned = xp;
+    script.avgQuality = Math.round(avgQuality * 10) / 10;
 
     gs.budget = (gs.budget ?? 0) + revenue;
     this.scene.events?.emit('activity-message', `Revenue: +$${revenue}K from "${script.title}"`);
