@@ -376,12 +376,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
-    if (!this.timePaused) {
-      this.timeSystem.update(delta);
+    this.timeSystem.update(delta);
 
-      const gameMinutes = (delta / 1000) * 20;
-      this.pipelineSystem.update(gameMinutes);
-    }
+    const gameMinutes = (delta / 1000) * 20;
+    this.pipelineSystem.update(gameMinutes);
 
     if (this.player && !this.player.isInUI) {
       const combined = {
