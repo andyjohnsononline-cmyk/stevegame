@@ -49,7 +49,7 @@ Each filmmaker has a preferred tone. Match it and the relationship grows. Clash 
 
 | Location | Purpose |
 |---|---|
-| **Steve's Houseboat** | Your desk (read scripts), your bed (save your game) |
+| **Steve's Houseboat** | Your desk (read scripts, give notes, greenlight). Progress auto-saves. |
 | **Brown Cafe 't Smalle** | Where everyone hangs out. Talk to filmmakers and colleagues. |
 
 Simple indoor exit connects the two. No travel map.
@@ -168,5 +168,5 @@ Each day runs from 8:00 AM to midnight. Time passes at 20 game-minutes per real 
 
 - **Engine**: Phaser 3 (browser-based)
 - **Art**: Procedural pixel art, generated at runtime
-- **Save**: localStorage, single slot
+- **Save**: localStorage, single slot, auto-saves on day advance and location change
 - **Controls**: WASD/Arrows to move, SPACE to interact, TAB for inbox, ESC for menu

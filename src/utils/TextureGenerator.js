@@ -209,25 +209,6 @@ export class TextureGenerator {
       g.fillRect(6, 15, 2, 1);
     });
 
-    createTexture(scene, 'obj_bed', 32, 48, (g) => {
-      g.fillStyle(PALETTE.warmBrown);
-      g.fillRect(0, 2, 32, 6);
-      g.fillRect(0, 40, 32, 8);
-      g.fillStyle(0x6B4A1E);
-      g.fillRect(0, 2, 32, 2);
-      g.fillStyle(PALETTE.cream);
-      g.fillRect(2, 6, 28, 6);
-      g.fillStyle(0xEEE6D6);
-      g.fillRect(4, 7, 12, 4);
-      g.fillRect(18, 7, 10, 4);
-      g.fillStyle(0x3A6BA8);
-      g.fillRect(2, 12, 28, 28);
-      g.fillStyle(0x4A7BB8);
-      g.fillRect(4, 14, 24, 24);
-      g.fillStyle(0x3A6BA8);
-      g.fillRect(4, 26, 24, 2);
-    });
-
     createTexture(scene, 'obj_chair', 16, 16, (g) => {
       g.fillStyle(PALETTE.warmBrown);
       g.fillRect(4, 8, 8, 8);
