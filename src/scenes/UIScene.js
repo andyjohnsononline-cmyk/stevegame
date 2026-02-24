@@ -23,6 +23,16 @@ const STAGE_COLORS = {
   post: 0x9C27B0,
 };
 
+const RESULT_COLORS = {
+  'Critical Acclaim': '#4CAF50',
+  'Positive Reviews': '#8BC34A',
+  'Mixed Reviews': '#FFC107',
+  'Poor Reviews': '#F44336',
+};
+
+const COMPLETED_CARD_H = 32;
+const PANEL_BOTTOM = 590;
+
 export class UIScene extends Phaser.Scene {
   constructor() {
     super({ key: 'UIScene' });
@@ -102,6 +112,39 @@ export class UIScene extends Phaser.Scene {
       'No shows\nin development', {
         fontSize: '9px', fontFamily: 'monospace', color: DIM_COLOR, align: 'center',
       }).setOrigin(0.5).setDepth(1);
+
+    this.completedDivider = this.add.rectangle(
+      PIPELINE_X + PIPELINE_W / 2, 0, PIPELINE_W - 20, 1, 0x444466, 0.6
+    ).setDepth(1).setVisible(false);
+
+    this.completedHeader = this.add.text(PIPELINE_X + PIPELINE_W / 2, 0, 'COMPLETED', {
+      fontSize: '9px', fontFamily: 'monospace', color: HIGHLIGHT, letterSpacing: 1,
+    }).setOrigin(0.5).setDepth(1).setVisible(false);
+
+    this.completedSummary = this.add.text(PIPELINE_X + PIPELINE_W / 2, 0, '', {
+      fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
+    }).setOrigin(0.5).setDepth(1).setVisible(false);
+
+    this.completedCards = [];
+    this.completedScrollOffset = 0;
+
+    this.completedArrowUp = this.add.text(PIPELINE_X + 10, 0, '\u25B2', {
+      fontSize: '10px', fontFamily: 'monospace', color: DIM_COLOR,
+    }).setDepth(2).setVisible(false).setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => { this.completedScrollOffset = Math.max(0, this.completedScrollOffset - 1); })
+      .on('pointerover', function () { this.setStyle({ color: HIGHLIGHT }); })
+      .on('pointerout', function () { this.setStyle({ color: DIM_COLOR }); });
+
+    this.completedArrowDown = this.add.text(PIPELINE_X + PIPELINE_W - 10, 0, '\u25BC', {
+      fontSize: '10px', fontFamily: 'monospace', color: DIM_COLOR,
+    }).setOrigin(1, 0).setDepth(2).setVisible(false).setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => { this.completedScrollOffset++; })
+      .on('pointerover', function () { this.setStyle({ color: HIGHLIGHT }); })
+      .on('pointerout', function () { this.setStyle({ color: DIM_COLOR }); });
+
+    this.completedPageText = this.add.text(PIPELINE_X + PIPELINE_W / 2, 0, '', {
+      fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
+    }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
   }
 
   _updatePipelinePanel() {
@@ -166,6 +209,113 @@ export class UIScene extends Phaser.Scene {
       }).setOrigin(1, 0).setDepth(3);
 
       this.pipelineCards.push({ bg, titleText, authorText, stageText, barBg, barFill, pctText });
+    }
+  }
+
+  // ===== COMPLETED SECTION (below active pipeline) =====
+
+  _clearCompletedCards() {
+    for (const card of this.completedCards) {
+      card.bg?.destroy();
+      card.titleText?.destroy();
+      card.infoText?.destroy();
+      card.tierText?.destroy();
+    }
+    this.completedCards = [];
+  }
+
+  _updateCompletedSection() {
+    const gs = this.gameScene?.gameState;
+    if (!gs) return;
+
+    this._clearCompletedCards();
+
+    const completed = gs.completedScripts ?? [];
+    const hasCompleted = completed.length > 0;
+
+    this.completedDivider.setVisible(hasCompleted);
+    this.completedHeader.setVisible(hasCompleted);
+    this.completedSummary.setVisible(hasCompleted);
+
+    if (!hasCompleted) {
+      this.completedArrowUp.setVisible(false);
+      this.completedArrowDown.setVisible(false);
+      this.completedPageText.setVisible(false);
+      return;
+    }
+
+    const activeCount = Math.min((gs.pipeline ?? []).length, 8);
+    const activeSectionBottom = activeCount === 0
+      ? PIPELINE_TOP + 80
+      : PIPELINE_TOP + 20 + activeCount * PIPELINE_CARD_H;
+
+    const dividerY = activeSectionBottom + 6;
+    this.completedDivider.setY(dividerY);
+
+    const headerY = dividerY + 10;
+    this.completedHeader.setY(headerY);
+
+    const totalRevenue = completed.reduce((sum, s) => sum + (s.revenue ?? 0), 0);
+    this.completedSummary.setText(`${completed.length} released | $${totalRevenue}K`);
+    this.completedSummary.setY(headerY + 13);
+
+    const cardsTop = headerY + 26;
+    const availableHeight = PANEL_BOTTOM - cardsTop - 18;
+    const maxVisibleCards = Math.max(1, Math.floor(availableHeight / COMPLETED_CARD_H));
+
+    const reversed = [...completed].reverse();
+    const maxOffset = Math.max(0, reversed.length - maxVisibleCards);
+    this.completedScrollOffset = Math.min(Math.max(0, this.completedScrollOffset), maxOffset);
+
+    const visibleItems = reversed.slice(
+      this.completedScrollOffset,
+      this.completedScrollOffset + maxVisibleCards
+    );
+
+    for (let i = 0; i < visibleItems.length; i++) {
+      const script = visibleItems[i];
+      const y = cardsTop + i * COMPLETED_CARD_H;
+      const tierColor = RESULT_COLORS[script.resultTier] ?? DIM_COLOR;
+
+      const bg = this.add.rectangle(PIPELINE_X + PIPELINE_W / 2, y + COMPLETED_CARD_H / 2 - 2,
+        PIPELINE_W - 4, COMPLETED_CARD_H - 4, 0x0a0a22, 0.5).setDepth(1);
+
+      const titleStr = script.title?.length > 14
+        ? script.title.substring(0, 12) + '...'
+        : script.title ?? 'Untitled';
+      const titleText = this.add.text(PIPELINE_X + 4, y, titleStr, {
+        fontSize: '9px', fontFamily: 'monospace', color: tierColor,
+      }).setDepth(2);
+
+      const infoText = this.add.text(PIPELINE_X + 4, y + 12,
+        `$${script.revenue ?? 0}K | Day ${script.releasedDay ?? '?'}`, {
+          fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
+        }).setDepth(2);
+
+      const tierShort = script.resultTier === 'Critical Acclaim' ? '\u2605\u2605\u2605'
+        : script.resultTier === 'Positive Reviews' ? '\u2605\u2605'
+          : script.resultTier === 'Mixed Reviews' ? '\u2605'
+            : '\u00B7';
+      const tierText = this.add.text(PIPELINE_X + PIPELINE_W - 6, y + 1, tierShort, {
+        fontSize: '9px', fontFamily: 'monospace', color: tierColor,
+      }).setOrigin(1, 0).setDepth(2);
+
+      this.completedCards.push({ bg, titleText, infoText, tierText });
+    }
+
+    const needsPagination = reversed.length > maxVisibleCards;
+    const arrowY = cardsTop + visibleItems.length * COMPLETED_CARD_H + 2;
+
+    this.completedArrowUp.setVisible(needsPagination && this.completedScrollOffset > 0);
+    this.completedArrowDown.setVisible(needsPagination && this.completedScrollOffset < maxOffset);
+    this.completedPageText.setVisible(needsPagination);
+
+    if (needsPagination) {
+      this.completedArrowUp.setPosition(PIPELINE_X + 10, arrowY);
+      this.completedArrowDown.setPosition(PIPELINE_X + PIPELINE_W - 10, arrowY);
+      const page = Math.floor(this.completedScrollOffset / maxVisibleCards) + 1;
+      const totalPages = Math.ceil(reversed.length / maxVisibleCards);
+      this.completedPageText.setText(`${page}/${totalPages}`).setPosition(PIPELINE_X + PIPELINE_W / 2, arrowY);
     }
   }
 
@@ -364,6 +514,7 @@ export class UIScene extends Phaser.Scene {
     }
 
     this._updatePipelinePanel();
+    this._updateCompletedSection();
     this._updateRelationshipPanel();
     this._updateActivityFeed(delta);
   }
