@@ -134,8 +134,8 @@ export class MenuScene extends Phaser.Scene {
     section('Tips', [
       'Talk to NPCs often -- your relationships evolve as you',
       '  give notes on their scripts.',
-      'Go to bed after 6pm to start fresh the next day.',
-      'Greenlit scripts release after 3 days in development.',
+      'Your progress is saved automatically.',
+      'Greenlit scripts release after a day in development.',
     ]);
 
     this._createButton(cx, h - 40, 'Back', () => this.showMainMenu());

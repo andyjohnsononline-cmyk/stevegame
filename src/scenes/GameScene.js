@@ -14,7 +14,6 @@ import { getDialogueChoice } from '../data/dialogueChoiceData.js';
 const TILE = 32;
 
 const OBJ_TEXTURES = {
-  bed: 'obj_bed',
   desk: 'obj_desk',
   chair: 'obj_chair',
   table: 'obj_table',
@@ -263,6 +262,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.gameState.playerPos = spawnPos;
+    SaveSystem.save(this.gameState);
     this.cameras.main.fadeOut(200, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.loadLocation(exit.target);
@@ -304,10 +304,6 @@ export class GameScene extends Phaser.Scene {
 
   handleObjectInteraction(obj) {
     switch (obj.action) {
-      case 'save':
-        SaveSystem.save(this.gameState);
-        this.showMessage('Game saved.');
-        break;
       case 'read_scripts':
       case 'work': this.openInbox(); break;
       case 'sit': this.showMessage(this._flavorText('sit')); break;
@@ -343,6 +339,7 @@ export class GameScene extends Phaser.Scene {
   _onNewDay() {
     this.scriptEngine.populateInbox(Math.random() < 0.6 ? 1 : 2);
     this.spawnNPCs();
+    SaveSystem.save(this.gameState);
   }
 
   resumeFromUI() {

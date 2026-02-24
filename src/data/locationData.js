@@ -9,7 +9,6 @@ export const LOCATIONS = {
     tileFloor: 'tile_wood_floor',
     tileWall: 'tile_wall',
     interactables: [
-      { x: 9, y: 2, type: 'bed', action: 'save', label: 'Bed (Save)' },
       { x: 5, y: 5, type: 'desk', action: 'read_scripts', label: "Steve's Desk" },
       { x: 3, y: 7, type: 'bookshelf', action: 'browse', label: 'Bookshelf' },
     ],
