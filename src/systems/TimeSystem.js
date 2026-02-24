@@ -9,7 +9,7 @@ export class TimeSystem {
 
   update(delta) {
     if (!this.state) return;
-    const gameMinutes = (delta / 1000) * 10;
+    const gameMinutes = (delta / 1000) * 20;
     this.state.time = (this.state.time ?? 480) + gameMinutes;
 
     if (this.state.time >= 1440) {
