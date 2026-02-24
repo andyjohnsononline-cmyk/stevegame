@@ -35,6 +35,7 @@ export class DialogueScene extends Phaser.Scene {
       case 'pause': this.showPauseMenu(); break;
       case 'notes': this.showNotesInterface(); break;
       case 'dialogue_choice': this.showDialogueChoice(); break;
+      case 'history': this.showHistory(0); break;
       default: this.showDialogue(); break;
     }
 
@@ -409,20 +410,104 @@ export class DialogueScene extends Phaser.Scene {
     this.makeButton(480, 500, 'Continue', () => { this.clearElements(); this.showInbox(); }, 140, 34);
   }
 
+  showHistory(page) {
+    this.clearElements();
+    const gs = this.gameScene.gameState;
+    const completed = gs.completedScripts ?? [];
+
+    this.makePanel(480, 320, 750, 520);
+    this.makeText(480, 75, 'Show History', { fontSize: '20px', origin: 0.5, color: HIGHLIGHT });
+
+    if (completed.length === 0) {
+      this.makeText(480, 300, 'No shows released yet.\nGreenlight scripts and wait for them to finish production.', {
+        origin: 0.5, color: DIM_COLOR,
+      });
+      this.makeButton(480, 540, 'Back', () => { this.clearElements(); this.showPauseMenu(); });
+      return;
+    }
+
+    const totalRevenue = completed.reduce((sum, s) => sum + (s.revenue ?? 0), 0);
+    const totalXP = completed.reduce((sum, s) => sum + (s.xpEarned ?? 0), 0);
+    this.makeText(480, 100, `${completed.length} show(s) released | Total revenue: $${totalRevenue}K | Total XP: ${totalXP}`, {
+      fontSize: '10px', origin: 0.5, color: DIM_COLOR,
+    });
+
+    const perPage = 7;
+    const totalPages = Math.ceil(completed.length / perPage);
+    const safePage = Math.max(0, Math.min(page, totalPages - 1));
+    const reversed = [...completed].reverse();
+    const pageItems = reversed.slice(safePage * perPage, (safePage + 1) * perPage);
+
+    const startY = 125;
+    const rowH = 54;
+
+    const tierColors = {
+      'Critical Acclaim': '#4CAF50',
+      'Positive Reviews': '#8BC34A',
+      'Mixed Reviews': '#FFC107',
+      'Poor Reviews': '#F44336',
+    };
+
+    for (let i = 0; i < pageItems.length; i++) {
+      const show = pageItems[i];
+      const y = startY + i * rowH;
+
+      this.addEl(this.add.rectangle(480, y + 20, 700, 48, 0x222244, 0.5).setDepth(2));
+
+      const title = (show.title ?? 'Untitled').length > 28
+        ? show.title.substring(0, 26) + '...'
+        : show.title ?? 'Untitled';
+      this.makeText(150, y + 4, `${show.genreIcon ?? ''} ${title}`, { fontSize: '12px' });
+
+      const tier = show.resultTier ?? 'Unknown';
+      const tierColor = tierColors[tier] ?? DIM_COLOR;
+      this.makeText(150, y + 20, `${show.genre ?? '?'} | by ${show.filmmakerName ?? '?'} | Day ${show.releasedDay ?? '?'}`, {
+        fontSize: '9px', color: DIM_COLOR,
+      });
+
+      this.makeText(560, y + 4, tier, { fontSize: '10px', color: tierColor });
+
+      const rev = show.revenue != null ? `$${show.revenue}K` : '?';
+      const xp = show.xpEarned != null ? `${show.xpEarned} XP` : '?';
+      const qual = show.avgQuality != null ? `Q: ${show.avgQuality}` : '';
+      this.makeText(560, y + 20, `${rev} | ${xp}${qual ? ' | ' + qual : ''}`, {
+        fontSize: '9px', color: DIM_COLOR,
+      });
+    }
+
+    const navY = 540;
+
+    if (totalPages > 1) {
+      this.makeText(480, navY - 30, `Page ${safePage + 1} / ${totalPages}`, {
+        fontSize: '10px', origin: 0.5, color: DIM_COLOR,
+      });
+      if (safePage > 0) {
+        this.makeButton(380, navY, 'Prev', () => this.showHistory(safePage - 1), 80, 30);
+      }
+      if (safePage < totalPages - 1) {
+        this.makeButton(580, navY, 'Next', () => this.showHistory(safePage + 1), 80, 30);
+      }
+    }
+
+    this.makeButton(480, navY, 'Back', () => { this.clearElements(); this.showPauseMenu(); }, 80, 30);
+  }
+
   showPauseMenu() {
-    this.makePanel(480, 320, 420, 340);
-    this.makeText(480, 180, 'PAUSED', { fontSize: '24px', origin: 0.5, color: HIGHLIGHT });
+    this.clearElements();
+    this.makePanel(480, 320, 420, 380);
+    this.makeText(480, 170, 'PAUSED', { fontSize: '24px', origin: 0.5, color: HIGHLIGHT });
 
     const gs = this.gameScene.gameState;
     const ts = this.gameScene.timeSystem;
-    this.makeText(480, 220, `Day ${gs.day} | ${ts.getTimeString()}`, { origin: 0.5, fontSize: '12px' });
+    this.makeText(480, 210, `Day ${gs.day} | ${ts.getTimeString()}`, { origin: 0.5, fontSize: '12px' });
 
     const active = this.gameScene.pipelineSystem.getPipelineScripts();
-    this.makeText(480, 250, `Active projects: ${active.length}`, { origin: 0.5, fontSize: '10px', color: DIM_COLOR });
-    this.makeText(480, 270, `Completed: ${(gs.completedScripts ?? []).length}`, { origin: 0.5, fontSize: '10px', color: DIM_COLOR });
+    this.makeText(480, 240, `Active projects: ${active.length}`, { origin: 0.5, fontSize: '10px', color: DIM_COLOR });
+    this.makeText(480, 258, `Completed: ${(gs.completedScripts ?? []).length}`, { origin: 0.5, fontSize: '10px', color: DIM_COLOR });
 
-    this.makeButton(480, 320, 'Resume', () => this.closeScene());
-    this.makeButton(480, 380, 'Save & Quit', () => {
+    this.makeButton(480, 300, 'Resume', () => this.closeScene());
+    this.makeButton(480, 355, 'Show History', () => this.showHistory(0), 180, 38);
+    this.makeButton(480, 410, 'Save & Quit', () => {
       SaveSystem.save(gs);
       this.gameScene.scene.stop('UIScene');
       this.gameScene.scene.stop('GameScene');
