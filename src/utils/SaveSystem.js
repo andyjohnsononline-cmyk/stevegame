@@ -1,4 +1,7 @@
-const SAVE_KEY = 'studiolot_save_v2';
+import { CREW_MEMBERS, getTotalDPS } from '../data/crewData.js';
+import { SKILLS } from '../data/skillData.js';
+
+const SAVE_KEY = 'studiolot_idle_v1';
 
 export class SaveSystem {
   static save(gameState) {
@@ -25,14 +28,27 @@ export class SaveSystem {
 
   static migrate(state) {
     const defaults = SaveSystem.getDefaultState();
-    if (state.lastSaveTimestamp === undefined) state.lastSaveTimestamp = Date.now();
-    if (!state.inventory) state.inventory = { ...defaults.inventory };
-    if (state.xp === undefined) state.xp = 0;
-    if (state.level === undefined) state.level = 1;
+    if (state.stage === undefined) state.stage = 1;
+    if (state.maxStage === undefined) state.maxStage = state.stage;
+    if (state.tapLevel === undefined) state.tapLevel = 1;
+    if (state.tapDamage === undefined) state.tapDamage = 1;
+    if (state.coins === undefined) state.coins = 0;
     if (state.totalCoins === undefined) state.totalCoins = 0;
-    if (state.totalProjects === undefined) state.totalProjects = 0;
-    if (!state.unlockedLands) state.unlockedLands = [...defaults.unlockedLands];
-    if (state.landsPurchased === undefined) state.landsPurchased = 1;
+    if (!state.crew) state.crew = [...defaults.crew];
+    if (!state.skills) state.skills = { ...defaults.skills };
+    if (!state.prestige) state.prestige = { ...defaults.prestige };
+    if (state.lastSaveTimestamp === undefined) state.lastSaveTimestamp = Date.now();
+
+    for (const cm of CREW_MEMBERS) {
+      if (!state.crew.find(c => c.id === cm.id)) {
+        state.crew.push({ id: cm.id, level: 0 });
+      }
+    }
+    for (const sk of SKILLS) {
+      if (!state.skills[sk.id]) {
+        state.skills[sk.id] = { id: sk.id, lastUsed: 0 };
+      }
+    }
   }
 
   static hasSave() {
@@ -47,25 +63,39 @@ export class SaveSystem {
     }
   }
 
+  static calculateOfflineProgress(state) {
+    if (!state.lastSaveTimestamp) return { coins: 0, seconds: 0 };
+    const now = Date.now();
+    const elapsed = (now - state.lastSaveTimestamp) / 1000;
+    if (elapsed < 10) return { coins: 0, seconds: 0 };
+
+    const starPower = state.prestige?.starPower ?? 1;
+    const dps = getTotalDPS(state.crew, starPower);
+    const offlineCoins = Math.floor(dps * elapsed * 0.5);
+    return { coins: offlineCoins, seconds: Math.floor(elapsed) };
+  }
+
   static getDefaultState() {
+    const crew = CREW_MEMBERS.map(cm => ({ id: cm.id, level: 0 }));
+    const skills = {};
+    for (const sk of SKILLS) {
+      skills[sk.id] = { id: sk.id, lastUsed: 0 };
+    }
+
     return {
-      playerX: 2.5 * 384,
-      playerY: 2.5 * 384,
-      inventory: {
-        script: 0,
-        idea: 0,
-        coffee: 0,
-        contact: 0,
-        coin: 0,
-        pitch: 0,
-        project: 0,
-      },
-      xp: 0,
-      level: 1,
+      stage: 1,
+      maxStage: 1,
+      tapLevel: 1,
+      tapDamage: 1,
+      coins: 0,
       totalCoins: 0,
-      totalProjects: 0,
-      unlockedLands: ['2,2'],
-      landsPurchased: 1,
+      crew,
+      skills,
+      prestige: {
+        count: 0,
+        starPower: 1.0,
+        totalStarPower: 0,
+      },
       lastSaveTimestamp: Date.now(),
     };
   }

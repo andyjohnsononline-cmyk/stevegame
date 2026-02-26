@@ -9,7 +9,7 @@ export class BootScene extends Phaser.Scene {
   create() {
     const { width, height } = this.cameras.main;
 
-    this.add.rectangle(width / 2, height / 2, width, height, 0x2d2d44);
+    this.add.rectangle(width / 2, height / 2, width, height, 0x1a1a2e);
 
     this.add.text(width / 2, height / 2 - 30, 'STUDIO LOT', {
       fontSize: '48px',
