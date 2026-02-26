@@ -1,37 +1,18 @@
 import Phaser from 'phaser';
-import { CHARACTERS } from '../data/characterData.js';
-import { AMBIENT_LINES, GENERAL_AMBIENT } from '../data/activityData.js';
+import { SaveSystem } from '../utils/SaveSystem.js';
+import { RESOURCE_TYPES } from '../data/resourceData.js';
+import { RECIPES } from '../data/craftingData.js';
 
+const HIGHLIGHT = '#E8913A';
 const TEXT_COLOR = '#F5E6CC';
 const DIM_COLOR = '#8888aa';
-const HIGHLIGHT = '#D4721A';
-const PANEL_ALPHA = 0.8;
 
-const PIPELINE_X = 770;
-const PIPELINE_W = 180;
-const PIPELINE_CARD_H = 58;
-const PIPELINE_TOP = 44;
+const INV_ITEMS = ['script', 'idea', 'coffee', 'contact', 'pitch', 'project', 'coin'];
+const SLOT_SIZE = 34;
+const SLOT_GAP = 3;
+const INV_Y = 614;
 
-const REL_X = 6;
-const REL_W = 44;
-const REL_SLOT_H = 56;
-const REL_TOP = 44;
-
-const STAGE_COLORS = {
-  writing: 0x2196F3,
-  production: 0xFFC107,
-  post: 0x9C27B0,
-};
-
-const RESULT_COLORS = {
-  'Critical Acclaim': '#4CAF50',
-  'Positive Reviews': '#8BC34A',
-  'Mixed Reviews': '#FFC107',
-  'Poor Reviews': '#F44336',
-};
-
-const COMPLETED_CARD_H = 32;
-const PANEL_BOTTOM = 590;
+const XP_THRESHOLDS = [0, 20, 50, 100, 200, 350, 550, 800, 1100, 1500];
 
 export class UIScene extends Phaser.Scene {
   constructor() {
@@ -43,536 +24,365 @@ export class UIScene extends Phaser.Scene {
   }
 
   create() {
-    // --- Top bar (clock + day) ---
-    this.hudBg = this.add.rectangle(480, 0, 960, 36, 0x000000, 0.75)
-      .setOrigin(0.5, 0).setDepth(0);
+    this.prevInventory = {};
+    this._snapshotInventory();
 
-    const style = { fontSize: '13px', fontFamily: 'monospace', color: TEXT_COLOR };
-    this.clockText = this.add.text(60, 8, '', style).setDepth(1);
-    this.dayText = this.add.text(180, 8, '', style).setDepth(1);
+    this._createInventoryBar();
+    this._createXPBar();
+    this._createLevelBadge();
+    this._createDeskPrompt();
+    this._createCraftingPanel();
+    this._createPauseOverlay();
 
-    this.budgetText = this.add.text(310, 8, '', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#4CAF50',
-    }).setDepth(1);
-
-    const titleStyle = { fontSize: '10px', fontFamily: 'monospace', color: HIGHLIGHT };
-    this.levelText = this.add.text(480, 5, '', titleStyle).setOrigin(0.5, 0).setDepth(1);
-    this.xpText = this.add.text(480, 18, '', {
-      fontSize: '9px', fontFamily: 'monospace', color: DIM_COLOR,
-    }).setOrigin(0.5, 0).setDepth(1);
-
-    const xpBarW = 80;
-    const xpBarH = 4;
-    const xpBarX = 480 - xpBarW / 2;
-    const xpBarY = 30;
-    this.xpBarBg = this.add.rectangle(xpBarX + xpBarW / 2, xpBarY + xpBarH / 2,
-      xpBarW, xpBarH, 0x222244, 1).setDepth(1);
-    this.xpBarFill = this.add.rectangle(xpBarX, xpBarY,
-      1, xpBarH, 0xD4721A, 1).setOrigin(0, 0).setDepth(2);
-
-    this.slotsText = this.add.text(660, 8, '', {
-      fontSize: '11px', fontFamily: 'monospace', color: DIM_COLOR,
-    }).setDepth(1);
-
-    this.gameScene.events.on('level-up', ({ level, title, maxSlots }) => {
-      this.showNotification(`Level Up! ${title} (${maxSlots} pipeline slots)`, HIGHLIGHT);
+    this.gameScene.events.on('inventory-changed', () => {
+      this._pulseChangedSlots();
+      this._updateInventory();
+      this._snapshotInventory();
     });
+    this.gameScene.events.on('desk-proximity', (near) => this._onDeskProximity(near));
+    this.gameScene.events.on('crafting-toggled', (open) => this._onCraftingToggled(open));
+    this.gameScene.events.on('level-up', (level) => this._onLevelUp(level));
+    this.gameScene.events.on('pause-toggled', () => this._togglePause());
 
-    this._createSpeedButtons();
-
-    this.gameScene.events.on('achievement-earned', ({ name, bonus }) => {
-      const bonusStr = bonus ? ` (${bonus.type === 'qualityFloor' ? '+' + bonus.value + ' quality' : bonus.type === 'unlockSpeed' ? bonus.value + 'x speed' : '+' + Math.round(bonus.value * 100) + '% ' + bonus.type})` : '';
-      this.showNotification(`Achievement: ${name}${bonusStr}`, '#FFD700');
-    });
-
-    // --- Controls hint ---
-    this.controlsText = this.add.text(480, 632, 'ARROWS/WASD: Move | SPACE: Interact | TAB: Inbox | ESC: Menu', {
-      fontSize: '9px', fontFamily: 'monospace', color: '#555577',
-    }).setOrigin(0.5).setDepth(1);
-
-    // --- Notification text ---
-    this.messageText = this.add.text(480, 570, '', {
-      fontSize: '14px', fontFamily: 'monospace', color: TEXT_COLOR,
-      backgroundColor: '#000000BB', padding: { left: 10, right: 10, top: 4, bottom: 4 },
-    }).setOrigin(0.5).setDepth(10).setAlpha(0);
-
-    this.gameScene.events.on('show-message', (text) => this.showNotification(text));
-
-    this._createPipelinePanel();
-    this._createRelationshipPanel();
-    this._createActivityFeed();
+    this._updateInventory();
+    this._updateXP();
   }
 
-  // ===== SPEED BUTTONS =====
+  _snapshotInventory() {
+    const inv = this.gameScene?.gameState?.inventory;
+    if (!inv) return;
+    for (const k of INV_ITEMS) {
+      this.prevInventory[k] = inv[k] ?? 0;
+    }
+  }
 
-  _createSpeedButtons() {
-    const speeds = [1, 2, 5];
-    this.speedButtons = [];
-    const baseX = 870;
+  // ===== INVENTORY BAR =====
 
-    for (let i = 0; i < speeds.length; i++) {
-      const spd = speeds[i];
-      const x = baseX + i * 30;
-      const bg = this.add.rectangle(x, 14, 26, 20, 0x222244, 0.8)
-        .setDepth(1).setInteractive({ useHandCursor: true })
-        .on('pointerdown', () => {
-          const gs = this.gameScene.gameState;
-          if (this._isSpeedUnlocked(spd)) {
-            gs.speedMultiplier = spd;
-          }
+  _createInventoryBar() {
+    const totalW = INV_ITEMS.length * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP;
+    const startX = (960 - totalW) / 2;
+
+    this.add.rectangle(480, INV_Y, totalW + 12, SLOT_SIZE + 8, 0x000000, 0.75)
+      .setDepth(0);
+
+    this.invSlots = [];
+
+    for (let i = 0; i < INV_ITEMS.length; i++) {
+      const resId = INV_ITEMS[i];
+      const x = startX + i * (SLOT_SIZE + SLOT_GAP) + SLOT_SIZE / 2;
+
+      const slot = this.add.image(x, INV_Y, 'ui_slot')
+        .setDepth(1).setDisplaySize(SLOT_SIZE, SLOT_SIZE);
+
+      const rtype = RESOURCE_TYPES[resId];
+      const icon = this.add.image(x, INV_Y - 3, rtype.dropTexture)
+        .setDepth(2).setScale(1.4);
+
+      const count = this.add.text(x + 10, INV_Y + 8, '0', {
+        fontSize: '8px', fontFamily: 'monospace', color: TEXT_COLOR,
+        stroke: '#000000', strokeThickness: 2,
+      }).setOrigin(1, 0.5).setDepth(3);
+
+      this.invSlots.push({ resId, slot, icon, count });
+    }
+  }
+
+  _updateInventory() {
+    const inv = this.gameScene?.gameState?.inventory;
+    if (!inv) return;
+
+    for (const s of this.invSlots) {
+      const val = inv[s.resId] ?? 0;
+      s.count.setText(val > 0 ? val.toString() : '');
+      s.icon.setAlpha(val > 0 ? 1 : 0.35);
+    }
+  }
+
+  _pulseChangedSlots() {
+    const inv = this.gameScene?.gameState?.inventory;
+    if (!inv) return;
+
+    for (const s of this.invSlots) {
+      const newVal = inv[s.resId] ?? 0;
+      const oldVal = this.prevInventory[s.resId] ?? 0;
+      if (newVal > oldVal) {
+        this.tweens.add({
+          targets: s.icon,
+          scaleX: { from: 2, to: 1.4 },
+          scaleY: { from: 2, to: 1.4 },
+          duration: 200,
+          ease: 'Back.easeOut',
         });
-      const label = this.add.text(x, 14, `${spd}x`, {
-        fontSize: '9px', fontFamily: 'monospace', color: DIM_COLOR,
-      }).setOrigin(0.5).setDepth(2);
-      this.speedButtons.push({ speed: spd, bg, label });
+        this.tweens.add({
+          targets: s.slot,
+          alpha: { from: 1, to: 0.7 },
+          duration: 100,
+          yoyo: true,
+        });
+      }
     }
   }
 
-  _isSpeedUnlocked(speed) {
-    if (speed === 1) return true;
-    const gs = this.gameScene.gameState;
-    const achievements = gs.achievements ?? [];
-    if (speed === 2) {
-      return (gs.level ?? 1) >= 2 || achievements.includes('speed_reader');
-    }
-    if (speed === 5) {
-      return (gs.level ?? 1) >= 4 || achievements.includes('veteran_executive');
-    }
-    return false;
+  // ===== XP BAR =====
+
+  _createXPBar() {
+    this.add.rectangle(480, 14, 220, 22, 0x000000, 0.75).setDepth(0);
+
+    this.xpBarBg = this.add.image(480, 14, 'ui_xp_bg').setDepth(1);
+    this.xpBarFill = this.add.image(380, 14, 'ui_xp_fill').setDepth(2)
+      .setOrigin(0, 0.5).setDisplaySize(1, 8);
+
+    this.xpText = this.add.text(480, 14, '', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#ffffff',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(3);
   }
 
-  _updateSpeedButtons() {
-    const gs = this.gameScene.gameState;
-    const currentSpeed = gs?.speedMultiplier ?? 1;
-    for (const btn of this.speedButtons) {
-      const unlocked = this._isSpeedUnlocked(btn.speed);
-      const active = btn.speed === currentSpeed;
-      btn.bg.setFillStyle(active ? 0xD4721A : unlocked ? 0x222244 : 0x111122, active ? 1 : 0.8);
-      btn.label.setStyle({ color: active ? '#ffffff' : unlocked ? DIM_COLOR : '#333344' });
-    }
+  _createLevelBadge() {
+    this.levelBg = this.add.circle(48, 14, 14, 0xe8913a, 1).setDepth(2);
+    this.levelText = this.add.text(48, 14, '1', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(3);
+
+    this.coinIcon = this.add.image(910, 14, 'drop_coin').setDepth(2).setScale(1.5);
+    this.coinText = this.add.text(898, 14, '0', {
+      fontSize: '11px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(1, 0.5).setDepth(2);
   }
 
-  // ===== PIPELINE PANEL (right side) =====
-
-  _createPipelinePanel() {
-    this.pipelineBg = this.add.rectangle(
-      PIPELINE_X + PIPELINE_W / 2, 320, PIPELINE_W + 12, 600, 0x000000, PANEL_ALPHA
-    ).setDepth(0);
-
-    this.pipelineTitle = this.add.text(PIPELINE_X + PIPELINE_W / 2, PIPELINE_TOP - 6, 'PIPELINE', {
-      fontSize: '10px', fontFamily: 'monospace', color: HIGHLIGHT, letterSpacing: 2,
-    }).setOrigin(0.5).setDepth(1);
-
-    this.pipelineCards = [];
-    this.pipelineEmptyText = this.add.text(PIPELINE_X + PIPELINE_W / 2, PIPELINE_TOP + 50,
-      'No shows\nin development', {
-        fontSize: '9px', fontFamily: 'monospace', color: DIM_COLOR, align: 'center',
-      }).setOrigin(0.5).setDepth(1);
-
-    this.completedDivider = this.add.rectangle(
-      PIPELINE_X + PIPELINE_W / 2, 0, PIPELINE_W - 20, 1, 0x444466, 0.6
-    ).setDepth(1).setVisible(false);
-
-    this.completedHeader = this.add.text(PIPELINE_X + PIPELINE_W / 2, 0, 'COMPLETED', {
-      fontSize: '9px', fontFamily: 'monospace', color: HIGHLIGHT, letterSpacing: 1,
-    }).setOrigin(0.5).setDepth(1).setVisible(false);
-
-    this.completedSummary = this.add.text(PIPELINE_X + PIPELINE_W / 2, 0, '', {
-      fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
-    }).setOrigin(0.5).setDepth(1).setVisible(false);
-
-    this.completedCards = [];
-    this.completedScrollOffset = 0;
-
-    this.completedArrowUp = this.add.text(PIPELINE_X + 10, 0, '\u25B2', {
-      fontSize: '10px', fontFamily: 'monospace', color: DIM_COLOR,
-    }).setDepth(2).setVisible(false).setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => { this.completedScrollOffset = Math.max(0, this.completedScrollOffset - 1); })
-      .on('pointerover', function () { this.setStyle({ color: HIGHLIGHT }); })
-      .on('pointerout', function () { this.setStyle({ color: DIM_COLOR }); });
-
-    this.completedArrowDown = this.add.text(PIPELINE_X + PIPELINE_W - 10, 0, '\u25BC', {
-      fontSize: '10px', fontFamily: 'monospace', color: DIM_COLOR,
-    }).setOrigin(1, 0).setDepth(2).setVisible(false).setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => { this.completedScrollOffset++; })
-      .on('pointerover', function () { this.setStyle({ color: HIGHLIGHT }); })
-      .on('pointerout', function () { this.setStyle({ color: DIM_COLOR }); });
-
-    this.completedPageText = this.add.text(PIPELINE_X + PIPELINE_W / 2, 0, '', {
-      fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
-    }).setOrigin(0.5, 0).setDepth(2).setVisible(false);
+  _onLevelUp(level) {
+    this.tweens.add({
+      targets: this.levelBg,
+      scaleX: { from: 2, to: 1 },
+      scaleY: { from: 2, to: 1 },
+      duration: 400,
+      ease: 'Back.easeOut',
+    });
   }
 
-  _updatePipelinePanel() {
-    const ps = this.gameScene?.pipelineSystem;
-    if (!ps) return;
-
-    const scripts = ps.getPipelineScripts();
-
-    // Clear old cards
-    for (const card of this.pipelineCards) {
-      card.bg?.destroy();
-      card.titleText?.destroy();
-      card.authorText?.destroy();
-      card.stageText?.destroy();
-      card.barBg?.destroy();
-      card.barFill?.destroy();
-      card.pctText?.destroy();
-    }
-    this.pipelineCards = [];
-
-    this.pipelineEmptyText.setVisible(scripts.length === 0);
-
-    const maxCards = Math.min(scripts.length, 8);
-    for (let i = 0; i < maxCards; i++) {
-      const script = scripts[i];
-      const info = ps.getProgress(script);
-      const y = PIPELINE_TOP + 20 + i * PIPELINE_CARD_H;
-
-      const bg = this.add.rectangle(PIPELINE_X + PIPELINE_W / 2, y + PIPELINE_CARD_H / 2 - 4,
-        PIPELINE_W - 4, PIPELINE_CARD_H - 6, 0x111133, 0.6).setDepth(1);
-
-      const title = script.title?.length > 18
-        ? script.title.substring(0, 16) + '...'
-        : script.title ?? 'Untitled';
-      const titleText = this.add.text(PIPELINE_X + 4, y, title, {
-        fontSize: '10px', fontFamily: 'monospace', color: TEXT_COLOR,
-      }).setDepth(2);
-
-      const authorText = this.add.text(PIPELINE_X + 4, y + 13, script.filmmakerName ?? '', {
-        fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
-      }).setDepth(2);
-
-      const stageColor = STAGE_COLORS[info.stage.id] ?? 0x2196F3;
-      const stageHex = '#' + stageColor.toString(16).padStart(6, '0');
-      const stageText = this.add.text(PIPELINE_X + PIPELINE_W - 6, y + 1, info.stage.label, {
-        fontSize: '8px', fontFamily: 'monospace', color: stageHex,
-      }).setOrigin(1, 0).setDepth(2);
-
-      const barY = y + 28;
-      const barW = PIPELINE_W - 12;
-      const barH = 8;
-      const barBg = this.add.rectangle(PIPELINE_X + 4 + barW / 2, barY + barH / 2,
-        barW, barH, 0x222244, 1).setDepth(2);
-
-      const fillW = Math.max(1, barW * info.fraction);
-      const barFill = this.add.rectangle(PIPELINE_X + 4, barY,
-        fillW, barH, stageColor, 1).setOrigin(0, 0).setDepth(3);
-
-      const pct = Math.floor(info.fraction * 100);
-      const pctText = this.add.text(PIPELINE_X + PIPELINE_W - 6, barY - 1, `${pct}%`, {
-        fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
-      }).setOrigin(1, 0).setDepth(3);
-
-      this.pipelineCards.push({ bg, titleText, authorText, stageText, barBg, barFill, pctText });
-    }
-  }
-
-  // ===== COMPLETED SECTION (below active pipeline) =====
-
-  _clearCompletedCards() {
-    for (const card of this.completedCards) {
-      card.bg?.destroy();
-      card.titleText?.destroy();
-      card.infoText?.destroy();
-      card.tierText?.destroy();
-    }
-    this.completedCards = [];
-  }
-
-  _updateCompletedSection() {
+  _updateXP() {
     const gs = this.gameScene?.gameState;
     if (!gs) return;
 
-    this._clearCompletedCards();
+    const level = gs.level ?? 1;
+    const xp = gs.xp ?? 0;
 
-    const completed = gs.completedScripts ?? [];
-    const hasCompleted = completed.length > 0;
+    this.levelText.setText(`${level}`);
 
-    this.completedDivider.setVisible(hasCompleted);
-    this.completedHeader.setVisible(hasCompleted);
-    this.completedSummary.setVisible(hasCompleted);
+    const currentThreshold = XP_THRESHOLDS[level - 1] ?? 0;
+    const nextThreshold = XP_THRESHOLDS[level] ?? null;
 
-    if (!hasCompleted) {
-      this.completedArrowUp.setVisible(false);
-      this.completedArrowDown.setVisible(false);
-      this.completedPageText.setVisible(false);
-      return;
-    }
-
-    const activeCount = Math.min((gs.pipeline ?? []).length, 8);
-    const activeSectionBottom = activeCount === 0
-      ? PIPELINE_TOP + 80
-      : PIPELINE_TOP + 20 + activeCount * PIPELINE_CARD_H;
-
-    const dividerY = activeSectionBottom + 6;
-    this.completedDivider.setY(dividerY);
-
-    const headerY = dividerY + 10;
-    this.completedHeader.setY(headerY);
-
-    const totalRevenue = completed.reduce((sum, s) => sum + (s.revenue ?? 0), 0);
-    this.completedSummary.setText(`${completed.length} released | $${totalRevenue}K`);
-    this.completedSummary.setY(headerY + 13);
-
-    const cardsTop = headerY + 26;
-    const availableHeight = PANEL_BOTTOM - cardsTop - 18;
-    const maxVisibleCards = Math.max(1, Math.floor(availableHeight / COMPLETED_CARD_H));
-
-    const reversed = [...completed].reverse();
-    const maxOffset = Math.max(0, reversed.length - maxVisibleCards);
-    this.completedScrollOffset = Math.min(Math.max(0, this.completedScrollOffset), maxOffset);
-
-    const visibleItems = reversed.slice(
-      this.completedScrollOffset,
-      this.completedScrollOffset + maxVisibleCards
-    );
-
-    for (let i = 0; i < visibleItems.length; i++) {
-      const script = visibleItems[i];
-      const y = cardsTop + i * COMPLETED_CARD_H;
-      const tierColor = RESULT_COLORS[script.resultTier] ?? DIM_COLOR;
-
-      const bg = this.add.rectangle(PIPELINE_X + PIPELINE_W / 2, y + COMPLETED_CARD_H / 2 - 2,
-        PIPELINE_W - 4, COMPLETED_CARD_H - 4, 0x0a0a22, 0.5).setDepth(1);
-
-      const titleStr = script.title?.length > 14
-        ? script.title.substring(0, 12) + '...'
-        : script.title ?? 'Untitled';
-      const titleText = this.add.text(PIPELINE_X + 4, y, titleStr, {
-        fontSize: '9px', fontFamily: 'monospace', color: tierColor,
-      }).setDepth(2);
-
-      const infoText = this.add.text(PIPELINE_X + 4, y + 12,
-        `$${script.revenue ?? 0}K | Day ${script.releasedDay ?? '?'}`, {
-          fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
-        }).setDepth(2);
-
-      const tierShort = script.resultTier === 'Critical Acclaim' ? '\u2605\u2605\u2605'
-        : script.resultTier === 'Positive Reviews' ? '\u2605\u2605'
-          : script.resultTier === 'Mixed Reviews' ? '\u2605'
-            : '\u00B7';
-      const tierText = this.add.text(PIPELINE_X + PIPELINE_W - 6, y + 1, tierShort, {
-        fontSize: '9px', fontFamily: 'monospace', color: tierColor,
-      }).setOrigin(1, 0).setDepth(2);
-
-      this.completedCards.push({ bg, titleText, infoText, tierText });
-    }
-
-    const needsPagination = reversed.length > maxVisibleCards;
-    const arrowY = cardsTop + visibleItems.length * COMPLETED_CARD_H + 2;
-
-    this.completedArrowUp.setVisible(needsPagination && this.completedScrollOffset > 0);
-    this.completedArrowDown.setVisible(needsPagination && this.completedScrollOffset < maxOffset);
-    this.completedPageText.setVisible(needsPagination);
-
-    if (needsPagination) {
-      this.completedArrowUp.setPosition(PIPELINE_X + 10, arrowY);
-      this.completedArrowDown.setPosition(PIPELINE_X + PIPELINE_W - 10, arrowY);
-      const page = Math.floor(this.completedScrollOffset / maxVisibleCards) + 1;
-      const totalPages = Math.ceil(reversed.length / maxVisibleCards);
-      this.completedPageText.setText(`${page}/${totalPages}`).setPosition(PIPELINE_X + PIPELINE_W / 2, arrowY);
-    }
-  }
-
-  // ===== RELATIONSHIP PANEL (left side) =====
-
-  _createRelationshipPanel() {
-    this.relBg = this.add.rectangle(
-      REL_X + REL_W / 2, 320, REL_W + 8, 600, 0x000000, PANEL_ALPHA
-    ).setDepth(0);
-
-    this.relSlots = [];
-    const filmmakers = CHARACTERS.filter(c => c.role === 'filmmaker');
-    const colleagues = CHARACTERS.filter(c => c.role === 'colleague');
-    const ordered = [...filmmakers, ...colleagues];
-
-    for (let i = 0; i < ordered.length; i++) {
-      const ch = ordered[i];
-      const y = REL_TOP + i * REL_SLOT_H;
-
-      const colors = ch.portraitColors ?? {};
-      const skinColor = Phaser.Display.Color.HexStringToColor(colors.skin ?? '#ccaa88').color;
-      const shirtColor = Phaser.Display.Color.HexStringToColor(colors.shirt ?? '#445566').color;
-      const hairColor = Phaser.Display.Color.HexStringToColor(colors.hair ?? '#333333').color;
-
-      // Mini portrait: hair on top, face, shirt on bottom
-      const hairRect = this.add.rectangle(REL_X + REL_W / 2, y + 2, 24, 8, hairColor).setDepth(2);
-      const faceRect = this.add.rectangle(REL_X + REL_W / 2, y + 10, 24, 12, skinColor).setDepth(2);
-      const bodyRect = this.add.rectangle(REL_X + REL_W / 2, y + 20, 24, 8, shirtColor).setDepth(2);
-
-      const initial = this.add.text(REL_X + REL_W / 2, y + 10, ch.name.charAt(0), {
-        fontSize: '9px', fontFamily: 'monospace', color: '#000000', fontStyle: 'bold',
-      }).setOrigin(0.5).setDepth(3);
-
-      const heartText = this.add.text(REL_X + REL_W / 2, y + 30, '', {
-        fontSize: '8px', fontFamily: 'monospace', color: '#ff6b8a',
-      }).setOrigin(0.5).setDepth(2);
-
-      const nameTag = this.add.text(REL_X + REL_W / 2, y + 40, ch.name.split(' ')[0], {
-        fontSize: '7px', fontFamily: 'monospace', color: DIM_COLOR,
-      }).setOrigin(0.5).setDepth(2);
-
-      const glowRect = this.add.rectangle(REL_X + REL_W / 2, y + 14, 30, 34, 0xffffff, 0)
-        .setDepth(1);
-
-      this.relSlots.push({
-        characterId: ch.id,
-        hairRect, faceRect, bodyRect, initial, heartText, nameTag, glowRect,
-        lastHearts: -1,
-      });
-    }
-
-    this.gameScene.events.on('relationship-changed', ({ npcId }) => {
-      const slot = this.relSlots.find(s => s.characterId === npcId);
-      if (slot) {
-        this.tweens.killTweensOf(slot.glowRect);
-        slot.glowRect.setFillStyle(0xffffff, 0.35);
-        this.tweens.add({
-          targets: slot.glowRect,
-          alpha: 0, duration: 800, ease: 'Power2',
-          onComplete: () => slot.glowRect.setAlpha(1),
-        });
-      }
-    });
-  }
-
-  _updateRelationshipPanel() {
-    const rs = this.gameScene?.relationshipSystem;
-    if (!rs) return;
-
-    for (const slot of this.relSlots) {
-      const hearts = rs.getHearts(slot.characterId);
-      if (hearts !== slot.lastHearts) {
-        const filled = Math.floor(hearts);
-        const display = filled > 0 ? '\u2665'.repeat(Math.min(filled, 5)) : '\u2661';
-        slot.heartText.setText(display);
-        slot.lastHearts = hearts;
-      }
-    }
-  }
-
-  // ===== ACTIVITY FEED (bottom) =====
-
-  _createActivityFeed() {
-    this.feedBg = this.add.rectangle(480, 607, 680, 20, 0x000000, 0.6).setDepth(0);
-
-    this.feedText = this.add.text(480, 607, '', {
-      fontSize: '9px', fontFamily: 'monospace', color: DIM_COLOR,
-    }).setOrigin(0.5).setDepth(1);
-
-    this.feedQueue = [];
-    this.feedTimer = 0;
-    this.feedInterval = 5000;
-    this.ambientTimer = 0;
-    this.ambientInterval = 25000 + Math.random() * 20000;
-
-    this.gameScene.events.on('activity-message', (msg) => {
-      this.feedQueue.push(msg);
-    });
-
-    this.gameScene.events.on('pipeline-release', ({ message }) => {
-      this.showNotification(message, '#4CAF50');
-    });
-  }
-
-  _updateActivityFeed(delta) {
-    this.feedTimer += delta;
-    this.ambientTimer += delta;
-
-    if (this.ambientTimer >= this.ambientInterval) {
-      this.ambientTimer = 0;
-      this.ambientInterval = 25000 + Math.random() * 20000;
-      this._pushAmbientLine();
-    }
-
-    if (this.feedTimer >= this.feedInterval) {
-      this.feedTimer = 0;
-      if (this.feedQueue.length > 0) {
-        const msg = this.feedQueue.shift();
-        this._showFeedLine(msg);
-        this.feedInterval = 4000;
-      } else {
-        this.feedInterval = 5000;
-      }
-    }
-  }
-
-  _pushAmbientLine() {
-    const charIds = Object.keys(AMBIENT_LINES);
-    const useGeneral = Math.random() < 0.3;
-
-    if (useGeneral) {
-      const pool = GENERAL_AMBIENT;
-      this.feedQueue.push(pool[Math.floor(Math.random() * pool.length)]);
+    if (nextThreshold != null) {
+      const progress = (xp - currentThreshold) / (nextThreshold - currentThreshold);
+      this.xpBarFill.setDisplaySize(Math.max(1, 200 * Math.min(1, progress)), 8);
+      this.xpText.setText(`${xp} / ${nextThreshold} XP`);
     } else {
-      const id = charIds[Math.floor(Math.random() * charIds.length)];
-      const pool = AMBIENT_LINES[id];
-      if (pool?.length) {
-        this.feedQueue.push(pool[Math.floor(Math.random() * pool.length)]);
+      this.xpBarFill.setDisplaySize(200, 8);
+      this.xpText.setText(`${xp} XP (MAX)`);
+    }
+
+    this.coinText.setText(`${gs.inventory?.coin ?? 0}`);
+  }
+
+  // ===== DESK PROMPT =====
+
+  _createDeskPrompt() {
+    this.deskPrompt = this.add.text(480, 548, '[E] Craft', {
+      fontSize: '10px', fontFamily: 'monospace', color: TEXT_COLOR,
+      backgroundColor: '#000000aa',
+      padding: { left: 6, right: 6, top: 3, bottom: 3 },
+    }).setOrigin(0.5).setDepth(10).setAlpha(0);
+  }
+
+  _onDeskProximity(near) {
+    this.tweens.killTweensOf(this.deskPrompt);
+    this.tweens.add({
+      targets: this.deskPrompt,
+      alpha: near ? 1 : 0,
+      duration: 150,
+    });
+  }
+
+  // ===== CRAFTING PANEL =====
+
+  _createCraftingPanel() {
+    this.craftContainer = this.add.container(480, 320).setDepth(20).setVisible(false);
+
+    const panelW = 280;
+    const panelH = 210;
+
+    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x0d0d1a, 0.92);
+    const border = this.add.rectangle(0, 0, panelW, panelH)
+      .setStrokeStyle(2, 0xe8913a);
+
+    const title = this.add.text(0, -panelH / 2 + 14, 'CRAFTING', {
+      fontSize: '12px', fontFamily: 'monospace', color: HIGHLIGHT,
+    }).setOrigin(0.5);
+
+    this.craftContainer.add([bg, border, title]);
+
+    this.recipeButtons = [];
+    const startY = -panelH / 2 + 38;
+
+    for (let i = 0; i < RECIPES.length; i++) {
+      const recipe = RECIPES[i];
+      const ry = startY + i * 52;
+
+      const rowBg = this.add.rectangle(0, ry + 10, panelW - 16, 44, 0x222244, 0.6);
+
+      const inputIcons = [];
+      const inputKeys = Object.keys(recipe.inputs);
+      const iconStartX = -panelW / 2 + 20;
+
+      for (let j = 0; j < inputKeys.length; j++) {
+        const resId = inputKeys[j];
+        const rtype = RESOURCE_TYPES[resId];
+        const ix = iconStartX + j * 28;
+        const ic = this.add.image(ix, ry + 2, rtype.dropTexture).setScale(1.2);
+        const ct = this.add.text(ix + 8, ry + 8, `${recipe.inputs[resId]}`, {
+          fontSize: '7px', fontFamily: 'monospace', color: TEXT_COLOR,
+          stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5);
+        inputIcons.push(ic, ct);
       }
+
+      const arrow = this.add.text(iconStartX + inputKeys.length * 28, ry + 2, '->', {
+        fontSize: '9px', fontFamily: 'monospace', color: DIM_COLOR,
+      }).setOrigin(0, 0.5);
+
+      const outType = RESOURCE_TYPES[recipe.output.type];
+      const outIcon = this.add.image(iconStartX + inputKeys.length * 28 + 26, ry + 2,
+        outType?.dropTexture ?? 'drop_coin').setScale(1.2);
+
+      const nameText = this.add.text(iconStartX, ry + 18, recipe.name, {
+        fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
+      });
+
+      const btn = this.add.rectangle(panelW / 2 - 40, ry + 10, 50, 28, 0xe8913a, 0.9)
+        .setDepth(21).setInteractive({ useHandCursor: true })
+        .on('pointerover', () => btn.setFillStyle(0xf09530))
+        .on('pointerout', () => btn.setFillStyle(0xe8913a, 0.9))
+        .on('pointerdown', () => {
+          if (this.gameScene.craft(recipe.id)) {
+            this._updateCraftingPanel();
+            this.tweens.add({
+              targets: btn,
+              scaleX: { from: 1.2, to: 1 },
+              scaleY: { from: 0.8, to: 1 },
+              duration: 120,
+              ease: 'Back.easeOut',
+            });
+          }
+        });
+
+      const btnLabel = this.add.text(panelW / 2 - 40, ry + 10, 'CRAFT', {
+        fontSize: '8px', fontFamily: 'monospace', color: '#ffffff',
+      }).setOrigin(0.5).setDepth(22);
+
+      this.craftContainer.add([rowBg, ...inputIcons, arrow, outIcon, nameText, btn, btnLabel]);
+      this.recipeButtons.push({ recipe, btn, btnLabel });
+    }
+
+    const closeText = this.add.text(0, panelH / 2 - 12, '[E] Close', {
+      fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
+    }).setOrigin(0.5);
+    this.craftContainer.add(closeText);
+  }
+
+  _onCraftingToggled(open) {
+    this.craftContainer.setVisible(open);
+    if (open) this._updateCraftingPanel();
+  }
+
+  _updateCraftingPanel() {
+    const inv = this.gameScene?.gameState?.inventory;
+    if (!inv) return;
+
+    for (const rb of this.recipeButtons) {
+      const canCraft = Object.entries(rb.recipe.inputs).every(
+        ([res, amount]) => (inv[res] ?? 0) >= amount
+      );
+      rb.btn.setFillStyle(canCraft ? 0xe8913a : 0x444455, canCraft ? 0.9 : 0.6);
+      if (canCraft) {
+        rb.btn.setInteractive({ useHandCursor: true });
+      } else {
+        rb.btn.disableInteractive();
+      }
+      rb.btnLabel.setColor(canCraft ? '#ffffff' : '#666666');
     }
   }
 
-  _showFeedLine(text) {
-    this.feedText.setText(text).setAlpha(0);
-    this.tweens.killTweensOf(this.feedText);
-    this.tweens.add({
-      targets: this.feedText,
-      alpha: 1, duration: 400, ease: 'Power2',
-      yoyo: false,
-      onComplete: () => {
-        this.tweens.add({
-          targets: this.feedText,
-          alpha: 0, duration: 600, delay: 3500,
-        });
-      },
-    });
+  // ===== PAUSE OVERLAY =====
+
+  _createPauseOverlay() {
+    this.pauseContainer = this.add.container(480, 320).setDepth(30).setVisible(false);
+
+    const dim = this.add.rectangle(0, 0, 960, 640, 0x000000, 0.6);
+    const panel = this.add.rectangle(0, 0, 240, 180, 0x0d0d1a, 0.95);
+    const border = this.add.rectangle(0, 0, 240, 180).setStrokeStyle(2, 0xe8913a);
+
+    const title = this.add.text(0, -60, 'PAUSED', {
+      fontSize: '16px', fontFamily: 'monospace', color: HIGHLIGHT,
+    }).setOrigin(0.5);
+
+    const resumeBtn = this.add.rectangle(0, -10, 160, 32, 0xd4721a, 0.9)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => resumeBtn.setFillStyle(0xe8851f))
+      .on('pointerout', () => resumeBtn.setFillStyle(0xd4721a, 0.9))
+      .on('pointerdown', () => this._togglePause());
+    const resumeLabel = this.add.text(0, -10, 'Resume', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
+    }).setOrigin(0.5);
+
+    const menuBtn = this.add.rectangle(0, 30, 160, 32, 0x444466, 0.9)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => menuBtn.setFillStyle(0x555577))
+      .on('pointerout', () => menuBtn.setFillStyle(0x444466, 0.9))
+      .on('pointerdown', () => {
+        this.gameScene.gameState.playerX = this.gameScene.player.x;
+        this.gameScene.gameState.playerY = this.gameScene.player.y;
+        SaveSystem.save(this.gameScene.gameState);
+        this.scene.stop('GameScene');
+        this.scene.stop('UIScene');
+        this.scene.start('MenuScene');
+      });
+    const menuLabel = this.add.text(0, 30, 'Save & Quit', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#aaaacc',
+    }).setOrigin(0.5);
+
+    const stats = this.add.text(0, 65, '', {
+      fontSize: '7px', fontFamily: 'monospace', color: DIM_COLOR,
+    }).setOrigin(0.5);
+    this.pauseStats = stats;
+
+    this.pauseContainer.add([dim, panel, border, title, resumeBtn, resumeLabel, menuBtn, menuLabel, stats]);
+    this.isPaused = false;
   }
 
-  // ===== NOTIFICATIONS =====
+  _togglePause() {
+    this.isPaused = !this.isPaused;
+    this.pauseContainer.setVisible(this.isPaused);
 
-  showNotification(text, color = TEXT_COLOR) {
-    this.messageText.setText(text).setStyle({ color }).setAlpha(1);
-    this.tweens.killTweensOf(this.messageText);
-    this.tweens.add({
-      targets: this.messageText,
-      alpha: 0, duration: 1500, delay: 2500,
-      onComplete: () => this.messageText.setAlpha(0),
-    });
+    if (this.isPaused) {
+      const gs = this.gameScene.gameState;
+      this.pauseStats.setText(
+        `Lv ${gs.level} | ${gs.totalProjects ?? 0} shows | ${gs.unlockedLands?.length ?? 1} lands`
+      );
+      this.gameScene.scene.pause();
+    } else {
+      this.gameScene.scene.resume();
+    }
   }
 
   // ===== UPDATE =====
 
-  update(_time, delta) {
-    const gs = this.gameScene?.gameState;
-    const ts = this.gameScene?.timeSystem;
-    if (!gs || !ts) return;
+  update() {
+    this._updateXP();
 
-    this.clockText.setText(ts.getTimeString());
-    this.dayText.setText(`Day ${gs.day}`);
-
-    const budget = gs.budget ?? 0;
-    this.budgetText.setText(`$${budget}K`);
-    this.budgetText.setStyle({ color: budget > 100 ? '#4CAF50' : budget > 50 ? '#FFC107' : '#F44336' });
-
-    const ls = this.gameScene.levelSystem;
-    if (ls) {
-      this.levelText.setText(ls.getTitle());
-      const nextXP = ls.getXPForNextLevel();
-      this.xpText.setText(nextXP !== null ? `XP: ${ls.getXP()}/${nextXP}` : `XP: ${ls.getXP()} (MAX)`);
-      const progress = ls.getXPProgress();
-      this.xpBarFill.setDisplaySize(Math.max(1, 80 * progress), 4);
-
-      const maxSlots = ls.getMaxSlots();
-      const used = (gs.pipeline ?? []).length;
-      this.slotsText.setText(`Slots: ${used}/${maxSlots}`);
+    if (this.craftContainer.visible) {
+      this._updateCraftingPanel();
     }
-
-    this._updatePipelinePanel();
-    this._updateCompletedSection();
-    this._updateRelationshipPanel();
-    this._updateActivityFeed(delta);
-    this._updateSpeedButtons();
   }
 }
