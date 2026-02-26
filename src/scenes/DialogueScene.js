@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { NOTE_FOCUSES, NOTE_TONES } from '../data/notesData.js';
 import { CHARACTERS } from '../data/characterData.js';
 import { SaveSystem } from '../utils/SaveSystem.js';
+import { UPGRADES, UPGRADE_CATEGORIES } from '../data/upgradeData.js';
 
 const PANEL_BG = 0x1a1a2e;
 const PANEL_BORDER = 0x2E86C1;
@@ -23,6 +24,7 @@ export class DialogueScene extends Phaser.Scene {
     this.dialogueText = data.text || '';
     this.characterId = data.characterId || null;
     this.choiceData = data.choiceData || null;
+    this.offlineResult = data.offlineResult || null;
     this.elements = [];
   }
 
@@ -36,6 +38,11 @@ export class DialogueScene extends Phaser.Scene {
       case 'notes': this.showNotesInterface(); break;
       case 'dialogue_choice': this.showDialogueChoice(); break;
       case 'history': this.showHistory(0); break;
+      case 'desk_menu': this.showDeskMenu(); break;
+      case 'upgrades': this.showUpgrades(0); break;
+      case 'achievements': this.showAchievements(); break;
+      case 'automation_settings': this.showAutomationSettings(); break;
+      case 'welcome_back': this.showWelcomeBack(); break;
       default: this.showDialogue(); break;
     }
 
@@ -216,6 +223,10 @@ export class DialogueScene extends Phaser.Scene {
     gs.gameState.time += 60;
     script.read = true;
 
+    if (!gs.gameState.lifetimeStats) gs.gameState.lifetimeStats = { totalRevenue: 0, totalScriptsReleased: 0, totalScriptsRead: 0, criticalAcclaims: 0 };
+    gs.gameState.lifetimeStats.totalScriptsRead++;
+    gs.achievementSystem?.checkAll();
+
     this.clearElements();
     this.showScriptDetail(script, script.quality);
   }
@@ -383,6 +394,11 @@ export class DialogueScene extends Phaser.Scene {
 
     const result = gs.notesSystem.applyNote(script, focus.id, tone.id);
 
+    const filmmaker = CHARACTERS[script.filmmakerIndex];
+    if (filmmaker && gs.automationSystem) {
+      gs.automationSystem.setNoteDefault(filmmaker.id, focus.id, tone.id);
+    }
+
     this.clearElements();
     this.makePanel(480, 320, 750, 480);
     this.makeText(480, 100, 'Notes Delivered', { fontSize: '18px', origin: 0.5, color: HIGHLIGHT });
@@ -494,25 +510,239 @@ export class DialogueScene extends Phaser.Scene {
 
   showPauseMenu() {
     this.clearElements();
-    this.makePanel(480, 320, 420, 380);
-    this.makeText(480, 170, 'PAUSED', { fontSize: '24px', origin: 0.5, color: HIGHLIGHT });
+    this.makePanel(480, 320, 420, 460);
+    this.makeText(480, 140, 'PAUSED', { fontSize: '24px', origin: 0.5, color: HIGHLIGHT });
 
     const gs = this.gameScene.gameState;
     const ts = this.gameScene.timeSystem;
-    this.makeText(480, 210, `Day ${gs.day} | ${ts.getTimeString()}`, { origin: 0.5, fontSize: '12px' });
+    this.makeText(480, 178, `Day ${gs.day} | ${ts.getTimeString()}`, { origin: 0.5, fontSize: '12px' });
 
     const active = this.gameScene.pipelineSystem.getPipelineScripts();
-    this.makeText(480, 240, `Active projects: ${active.length}`, { origin: 0.5, fontSize: '10px', color: DIM_COLOR });
-    this.makeText(480, 258, `Completed: ${(gs.completedScripts ?? []).length}`, { origin: 0.5, fontSize: '10px', color: DIM_COLOR });
+    this.makeText(480, 205, `Active projects: ${active.length}`, { origin: 0.5, fontSize: '10px', color: DIM_COLOR });
+    this.makeText(480, 220, `Completed: ${(gs.completedScripts ?? []).length}`, { origin: 0.5, fontSize: '10px', color: DIM_COLOR });
 
-    this.makeButton(480, 300, 'Resume', () => this.closeScene());
-    this.makeButton(480, 355, 'Show History', () => this.showHistory(0), 180, 38);
-    this.makeButton(480, 410, 'Save & Quit', () => {
+    this.makeButton(480, 265, 'Resume', () => this.closeScene());
+    this.makeButton(480, 315, 'Show History', () => this.showHistory(0), 180, 38);
+    this.makeButton(480, 365, 'Achievements', () => this.showAchievements(), 180, 38);
+    this.makeButton(480, 415, 'Automation', () => this.showAutomationSettings(), 180, 38);
+    this.makeButton(480, 465, 'Save & Quit', () => {
       SaveSystem.save(gs);
       this.gameScene.scene.stop('UIScene');
       this.gameScene.scene.stop('GameScene');
       this.scene.stop();
       this.scene.start('MenuScene');
     }, 180, 38);
+  }
+
+  // ===== DESK MENU =====
+
+  showDeskMenu() {
+    this.makePanel(480, 320, 420, 220);
+    this.makeText(480, 235, 'Your Desk', { fontSize: '18px', origin: 0.5, color: HIGHLIGHT });
+    this.makeButton(480, 290, 'Read Scripts', () => { this.clearElements(); this.showInbox(); }, 200, 38);
+    this.makeButton(480, 340, 'Studio Upgrades', () => { this.clearElements(); this.showUpgrades(0); }, 200, 38);
+    this.makeButton(480, 390, 'Close', () => this.closeScene(), 120, 32);
+  }
+
+  // ===== UPGRADES =====
+
+  showUpgrades(scrollOffset) {
+    this.clearElements();
+    const gs = this.gameScene.gameState;
+    const us = this.gameScene.upgradeSystem;
+
+    this.makePanel(480, 320, 750, 540);
+    this.makeText(480, 65, 'Studio Upgrades', { fontSize: '20px', origin: 0.5, color: HIGHLIGHT });
+    this.makeText(480, 90, `Budget: $${gs.budget ?? 0}K`, { fontSize: '12px', origin: 0.5, color: '#4CAF50' });
+
+    const perPage = 6;
+    const allUpgrades = UPGRADES;
+    const totalPages = Math.ceil(allUpgrades.length / perPage);
+    const safePage = Math.max(0, Math.min(scrollOffset, totalPages - 1));
+    const pageItems = allUpgrades.slice(safePage * perPage, (safePage + 1) * perPage);
+
+    const startY = 115;
+    const rowH = 62;
+
+    for (let i = 0; i < pageItems.length; i++) {
+      const def = pageItems[i];
+      const y = startY + i * rowH;
+      const purchased = us.hasPurchased(def.id);
+      const canBuy = us.canPurchase(def.id);
+
+      const catLabel = UPGRADE_CATEGORIES.find(c => c.id === def.category)?.label ?? '';
+      const rowBg = purchased ? 0x1a3a1a : 0x222244;
+      this.addEl(this.add.rectangle(480, y + 22, 700, 54, rowBg, 0.5).setDepth(2));
+
+      this.makeText(150, y + 4, def.name, { fontSize: '12px', color: purchased ? '#4CAF50' : TEXT_COLOR });
+      this.makeText(150, y + 20, `${catLabel} | ${def.description}`, { fontSize: '9px', color: DIM_COLOR });
+      this.makeText(150, y + 34, `Cost: $${def.cost}K | Requires: Lvl ${def.levelRequired}${def.prerequisite ? ' + ' + (us.getUpgrade(def.prerequisite)?.name ?? def.prerequisite) : ''}`, {
+        fontSize: '8px', color: DIM_COLOR,
+      });
+
+      if (purchased) {
+        this.makeText(700, y + 14, 'OWNED', { fontSize: '10px', color: '#4CAF50' });
+      } else if (canBuy) {
+        this.makeButton(700, y + 18, 'Buy', () => {
+          us.purchase(def.id);
+          this.showUpgrades(safePage);
+        }, 70, 28);
+      } else {
+        const reason = (gs.level ?? 1) < def.levelRequired ? 'Lvl locked'
+          : def.prerequisite && !us.hasPurchased(def.prerequisite) ? 'Prereq'
+          : 'No funds';
+        this.makeDisabledButton(700, y + 18, 'Buy', reason, 70, 28);
+      }
+    }
+
+    const navY = 545;
+    if (totalPages > 1) {
+      this.makeText(480, navY - 25, `Page ${safePage + 1}/${totalPages}`, { fontSize: '10px', origin: 0.5, color: DIM_COLOR });
+      if (safePage > 0) this.makeButton(380, navY, 'Prev', () => this.showUpgrades(safePage - 1), 80, 30);
+      if (safePage < totalPages - 1) this.makeButton(580, navY, 'Next', () => this.showUpgrades(safePage + 1), 80, 30);
+    }
+
+    this.makeButton(480, navY, 'Back', () => {
+      this.clearElements();
+      this.showDeskMenu();
+    }, 80, 30);
+  }
+
+  // ===== ACHIEVEMENTS =====
+
+  showAchievements() {
+    this.clearElements();
+    const gs = this.gameScene.gameState;
+    const as = this.gameScene.achievementSystem;
+
+    this.makePanel(480, 320, 750, 520);
+    this.makeText(480, 80, 'Achievements', { fontSize: '20px', origin: 0.5, color: HIGHLIGHT });
+
+    if (!as) {
+      this.makeText(480, 300, 'Achievement system not available.', { origin: 0.5, color: DIM_COLOR });
+      this.makeButton(480, 540, 'Back', () => { this.clearElements(); this.showPauseMenu(); });
+      return;
+    }
+
+    const allAchievements = as.getAllAchievements();
+    const earned = gs.achievements ?? [];
+
+    const startY = 110;
+    const rowH = 42;
+    const maxVisible = Math.min(allAchievements.length, 10);
+
+    for (let i = 0; i < maxVisible; i++) {
+      const ach = allAchievements[i];
+      const isEarned = earned.includes(ach.id);
+      const y = startY + i * rowH;
+
+      const rowBg = isEarned ? 0x1a3a1a : 0x111133;
+      this.addEl(this.add.rectangle(480, y + 16, 700, 38, rowBg, 0.5).setDepth(2));
+
+      const icon = isEarned ? '\u2605' : '\u2606';
+      const nameColor = isEarned ? '#4CAF50' : '#666688';
+      this.makeText(140, y + 4, `${icon} ${ach.name}`, { fontSize: '12px', color: nameColor });
+      this.makeText(140, y + 20, isEarned ? ach.description : ach.hint ?? ach.description, {
+        fontSize: '9px', color: DIM_COLOR,
+      });
+
+      if (ach.bonus) {
+        const bonusStr = ach.bonus.type === 'qualityFloor' ? `+${ach.bonus.value} quality floor`
+          : ach.bonus.type === 'unlockSpeed' ? `Unlock ${ach.bonus.value}x speed`
+          : `+${Math.round(ach.bonus.value * 100)}% ${ach.bonus.type}`;
+        this.makeText(680, y + 10, bonusStr, { fontSize: '9px', color: isEarned ? '#8BC34A' : '#555577' });
+      }
+    }
+
+    const statsY = startY + maxVisible * rowH + 8;
+    const stats = gs.lifetimeStats ?? {};
+    this.makeText(480, statsY,
+      `Released: ${stats.totalScriptsReleased ?? 0} | Revenue: $${stats.totalRevenue ?? 0}K | Read: ${stats.totalScriptsRead ?? 0}`,
+      { fontSize: '9px', origin: 0.5, color: DIM_COLOR });
+
+    this.makeButton(480, statsY + 25, 'Back', () => { this.clearElements(); this.showPauseMenu(); }, 100, 30);
+  }
+
+  // ===== AUTOMATION SETTINGS =====
+
+  showAutomationSettings() {
+    this.clearElements();
+    const gs = this.gameScene.gameState;
+    if (!gs.automation) {
+      gs.automation = { autoRead: false, autoNotes: false, autoGreenlight: false, qualityThreshold: 6, noteDefaults: {} };
+    }
+    const auto = gs.automation;
+    const us = this.gameScene.upgradeSystem;
+
+    this.makePanel(480, 320, 500, 400);
+    this.makeText(480, 155, 'Automation Settings', { fontSize: '18px', origin: 0.5, color: HIGHLIGHT });
+
+    const items = [
+      { key: 'autoRead', label: 'Auto-Read', upgradeId: 'autoRead', desc: 'Automatically read new scripts' },
+      { key: 'autoNotes', label: 'Auto-Notes', upgradeId: 'autoNotes', desc: 'Apply default notes per filmmaker' },
+      { key: 'autoGreenlight', label: 'Auto-Greenlight', upgradeId: 'autoGreenlight', desc: 'Greenlight scripts above threshold' },
+    ];
+
+    let y = 210;
+    for (const item of items) {
+      const unlocked = us?.hasPurchased(item.upgradeId);
+      const enabled = unlocked && auto[item.key];
+      const statusText = !unlocked ? 'LOCKED' : enabled ? 'ON' : 'OFF';
+      const statusColor = !unlocked ? '#555577' : enabled ? '#4CAF50' : '#F44336';
+
+      this.makeText(300, y, item.label, { fontSize: '12px', color: unlocked ? TEXT_COLOR : '#555577' });
+      this.makeText(300, y + 16, item.desc, { fontSize: '9px', color: DIM_COLOR });
+
+      if (unlocked) {
+        this.makeButton(620, y + 8, statusText, () => {
+          auto[item.key] = !auto[item.key];
+          this.showAutomationSettings();
+        }, 80, 28);
+      } else {
+        this.makeText(620, y + 8, statusText, { fontSize: '10px', color: statusColor });
+      }
+      y += 55;
+    }
+
+    if (us?.hasPurchased('autoGreenlight')) {
+      this.makeText(300, y + 5, `Quality Threshold: ${auto.qualityThreshold}/10`, { fontSize: '11px' });
+      this.makeButton(570, y + 5, '-', () => {
+        auto.qualityThreshold = Math.max(1, auto.qualityThreshold - 1);
+        this.showAutomationSettings();
+      }, 30, 26);
+      this.makeButton(620, y + 5, '+', () => {
+        auto.qualityThreshold = Math.min(10, auto.qualityThreshold + 1);
+        this.showAutomationSettings();
+      }, 30, 26);
+    }
+
+    this.makeButton(480, 490, 'Back', () => { this.clearElements(); this.showPauseMenu(); });
+  }
+
+  // ===== WELCOME BACK (Offline Progress) =====
+
+  showWelcomeBack() {
+    const result = this.offlineResult;
+    if (!result) { this.closeScene(); return; }
+
+    this.makePanel(480, 320, 600, 380);
+    this.makeText(480, 165, 'Welcome Back!', { fontSize: '22px', origin: 0.5, color: HIGHLIGHT });
+
+    let y = 210;
+    const lines = [];
+    if (result.daysElapsed > 0) lines.push(`${result.daysElapsed} day(s) passed`);
+    if (result.scriptsReleased > 0) lines.push(`${result.scriptsReleased} script(s) released`);
+    if (result.revenueEarned > 0) lines.push(`+$${result.revenueEarned}K revenue earned`);
+    if (result.scriptsArrived > 0) lines.push(`${result.scriptsArrived} new script(s) arrived`);
+    if (result.levelUps > 0) lines.push(`${result.levelUps} level up(s)!`);
+
+    if (lines.length === 0) lines.push('Not much happened while you were away.');
+
+    for (const line of lines) {
+      this.makeText(480, y, line, { fontSize: '13px', origin: 0.5 });
+      y += 28;
+    }
+
+    this.makeButton(480, 460, 'Continue', () => this.closeScene(), 140, 38);
   }
 }

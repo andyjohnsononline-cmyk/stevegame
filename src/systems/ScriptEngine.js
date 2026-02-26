@@ -12,7 +12,8 @@ export class ScriptEngine {
       this._filmmakerIdByIndex(filmmakerIndex)
     ) ?? 0;
     const heartsBonus = hearts >= 8 ? 2 : hearts >= 5 ? 1 : 0;
-    return generateScript(id, filmmakerIndex, heartsBonus);
+    const upgradeBonus = this.scene.upgradeSystem?.getBonus('qualityFloor') ?? 0;
+    return generateScript(id, filmmakerIndex, heartsBonus + upgradeBonus);
   }
 
   _filmmakerIdByIndex(index) {
@@ -25,8 +26,11 @@ export class ScriptEngine {
     if (!gs) return;
     if (!gs.inbox) gs.inbox = [];
 
-    const maxInbox = 6;
-    const toAdd = Math.min(count, Math.max(0, maxInbox - gs.inbox.length));
+    const us = this.scene.upgradeSystem;
+    const extraScripts = us?.getBonus('extraScriptsPerDay') ?? 0;
+    const inboxCap = us?.getBonus('inboxCapacity') || 6;
+    const maxInbox = Math.max(6, inboxCap);
+    const toAdd = Math.min(count + extraScripts, Math.max(0, maxInbox - gs.inbox.length));
 
     for (let i = 0; i < toAdd; i++) {
       const filmmakerIndex = Math.floor(Math.random() * 5);

@@ -7,6 +7,10 @@ import { NotesSystem } from '../systems/NotesSystem.js';
 import { RelationshipSystem } from '../systems/RelationshipSystem.js';
 import { PipelineSystem } from '../systems/PipelineSystem.js';
 import { LevelSystem } from '../systems/LevelSystem.js';
+import { UpgradeSystem } from '../systems/UpgradeSystem.js';
+import { AutomationSystem } from '../systems/AutomationSystem.js';
+import { AchievementSystem } from '../systems/AchievementSystem.js';
+import { OfflineProgressSystem } from '../systems/OfflineProgressSystem.js';
 import { SaveSystem } from '../utils/SaveSystem.js';
 import { getLocation } from '../data/locationData.js';
 import { getDialogueChoice } from '../data/dialogueChoiceData.js';
@@ -49,6 +53,9 @@ export class GameScene extends Phaser.Scene {
     this.relationshipSystem = new RelationshipSystem(this);
     this.pipelineSystem = new PipelineSystem(this);
     this.levelSystem = new LevelSystem(this);
+    this.upgradeSystem = new UpgradeSystem(this);
+    this.automationSystem = new AutomationSystem(this);
+    this.achievementSystem = new AchievementSystem(this);
     this.pipelineSystem.migrateScripts();
 
     this.events.on('day-advanced', () => this._onNewDay());
@@ -93,6 +100,22 @@ export class GameScene extends Phaser.Scene {
 
     this.loadLocation(this.gameState.currentLocation ?? 'houseboat');
     this.scene.launch('UIScene', { gameScene: this });
+
+    if (this.loadSave) {
+      const offlineResult = OfflineProgressSystem.calculate(
+        this.gameState, this.pipelineSystem, this.scriptEngine, this.levelSystem
+      );
+      if (offlineResult.daysElapsed > 0 || offlineResult.scriptsReleased > 0) {
+        this.achievementSystem.checkAll();
+        this.timePaused = true;
+        this.player?.setInUI(true);
+        this.scene.launch('DialogueScene', {
+          gameScene: this,
+          mode: 'welcome_back',
+          offlineResult,
+        });
+      }
+    }
   }
 
   loadLocation(locationId) {
@@ -305,11 +328,21 @@ export class GameScene extends Phaser.Scene {
   handleObjectInteraction(obj) {
     switch (obj.action) {
       case 'read_scripts':
-      case 'work': this.openInbox(); break;
+      case 'work': this.openDeskMenu(); break;
       case 'sit': this.showMessage(this._flavorText('sit')); break;
       case 'browse': this.showMessage(this._flavorText('browse')); break;
       default: this.showMessage(obj.label ?? 'Nothing happens.');
     }
+  }
+
+  openDeskMenu() {
+    if (this.scene.isActive('DialogueScene')) return;
+    this.timePaused = true;
+    this.player?.setInUI(true);
+    this.scene.launch('DialogueScene', {
+      gameScene: this,
+      mode: 'desk_menu',
+    });
   }
 
   openInbox() {
@@ -338,6 +371,7 @@ export class GameScene extends Phaser.Scene {
 
   _onNewDay() {
     this.scriptEngine.populateInbox(Math.random() < 0.6 ? 1 : 2);
+    this.automationSystem.onNewDay();
     this.spawnNPCs();
     SaveSystem.save(this.gameState);
   }
@@ -375,7 +409,8 @@ export class GameScene extends Phaser.Scene {
   update(time, delta) {
     this.timeSystem.update(delta);
 
-    const gameMinutes = (delta / 1000) * 20;
+    const speed = this.gameState.speedMultiplier ?? 1;
+    const gameMinutes = (delta / 1000) * 20 * speed;
     this.pipelineSystem.update(gameMinutes);
 
     if (this.player && !this.player.isInUI) {
