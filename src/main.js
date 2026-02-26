@@ -4,6 +4,7 @@ import { MenuScene } from './scenes/MenuScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { UIScene } from './scenes/UIScene.js';
 import { DialogueScene } from './scenes/DialogueScene.js';
+import { DebugScene } from './scenes/DebugScene.js';
 
 const config = {
   type: Phaser.AUTO,
@@ -19,7 +20,7 @@ const config = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, GameScene, UIScene, DialogueScene],
+  scene: [BootScene, MenuScene, GameScene, UIScene, DialogueScene, DebugScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

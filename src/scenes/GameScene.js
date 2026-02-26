@@ -78,9 +78,12 @@ export class GameScene extends Phaser.Scene {
     this.escKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.tabKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
 
+    this.backtickKey = this.input.keyboard.addKey(192);
+
     this.spaceKey.on('down', () => this.handleInteract());
     this.escKey.on('down', () => this.togglePauseMenu());
     this.tabKey.on('down', () => this.openInbox());
+    this.backtickKey.on('down', () => this.toggleDebug());
 
     this.interactPrompt = this.add.text(0, 0, '', {
       fontSize: '11px', fontFamily: 'monospace', color: '#FFD700',
@@ -353,6 +356,18 @@ export class GameScene extends Phaser.Scene {
       gameScene: this,
       mode: 'inbox',
     });
+  }
+
+  toggleDebug() {
+    if (this.scene.isActive('DebugScene')) {
+      this.scene.stop('DebugScene');
+      if (!this.scene.isActive('DialogueScene')) {
+        this.resumeFromUI();
+      }
+    } else {
+      this.player?.setInUI(true);
+      this.scene.launch('DebugScene', { gameScene: this });
+    }
   }
 
   togglePauseMenu() {
