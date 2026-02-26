@@ -1,0 +1,11 @@
+{
+  "menuLoaded": true,
+  "playClicked": true,
+  "gameLoaded": true,
+  "playerVisible": true,
+  "resourceNodesVisible": true,
+  "inventoryBarVisible": false,
+  "xpBarVisible": false,
+  "landSystemVisible": true,
+  "errors": []
+}
