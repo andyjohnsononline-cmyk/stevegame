@@ -35,6 +35,7 @@ export class RelationshipSystem {
           `Milestone: reached ${m} hearts with ${npcId}! +3 XP`);
       }
     }
+    this.scene.achievementSystem?.checkAll();
   }
 
   getDialogue(npcId, type) {

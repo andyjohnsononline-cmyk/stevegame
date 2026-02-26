@@ -17,9 +17,12 @@ export class NotesSystem {
 
     const effect = calculateNoteEffect(focusId, toneId, scriptQuality, filmmakerPreference, trustLevel);
 
+    const notesBonus = this.scene.upgradeSystem?.getBonus('notesBonus') ?? 0;
     for (const [attr, delta] of Object.entries(effect.qualityChanges)) {
       if (script.quality[attr] !== undefined) {
-        script.quality[attr] = Math.max(1, Math.min(10, script.quality[attr] + delta));
+        const boostedDelta = delta > 0 ? delta + notesBonus : delta;
+        script.quality[attr] = Math.max(1, Math.min(10, script.quality[attr] + boostedDelta));
+        effect.qualityChanges[attr] = boostedDelta;
       }
     }
 

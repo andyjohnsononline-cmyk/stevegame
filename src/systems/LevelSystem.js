@@ -34,6 +34,7 @@ export class LevelSystem {
       });
       this.scene.events?.emit('activity-message',
         `Promoted to ${info.title}! Pipeline expanded to ${info.maxSlots} slots.`);
+      this.scene.achievementSystem?.checkAll();
     }
   }
 

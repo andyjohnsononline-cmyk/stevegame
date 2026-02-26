@@ -31,9 +31,12 @@ export class PipelineSystem {
     const gs = this.scene.gameState;
     if (!gs?.pipeline?.length) return;
 
+    const speedBonus = this.scene.upgradeSystem?.getBonusMultiplier('pipelineSpeed') ?? 1;
+    const boostedDelta = deltaMinutes * speedBonus;
+
     for (const script of [...gs.pipeline]) {
       const prevProgress = script.progressMinutes ?? 0;
-      script.progressMinutes = Math.min(prevProgress + deltaMinutes, TOTAL_DEV_MINUTES);
+      script.progressMinutes = Math.min(prevProgress + boostedDelta, TOTAL_DEV_MINUTES);
 
       const prevStage = this._getStage(prevProgress);
       const currStage = this._getStage(script.progressMinutes);
@@ -86,6 +89,9 @@ export class PipelineSystem {
       message = `"${script.title}" released to poor reviews. A learning experience.`;
     }
 
+    const revenueMultiplier = this.scene.upgradeSystem?.getBonusMultiplier('revenue') ?? 1;
+    revenue = Math.round(revenue * revenueMultiplier);
+
     script.resultTier = resultTier;
     script.revenue = revenue;
     script.xpEarned = xp;
@@ -94,7 +100,13 @@ export class PipelineSystem {
     gs.budget = (gs.budget ?? 0) + revenue;
     this.scene.events?.emit('activity-message', `Revenue: +$${revenue}K from "${script.title}"`);
 
+    if (!gs.lifetimeStats) gs.lifetimeStats = { totalRevenue: 0, totalScriptsReleased: 0, totalScriptsRead: 0, criticalAcclaims: 0 };
+    gs.lifetimeStats.totalRevenue += revenue;
+    gs.lifetimeStats.totalScriptsReleased++;
+    if (resultTier === 'Critical Acclaim') gs.lifetimeStats.criticalAcclaims++;
+
     this.scene.levelSystem?.addXP(xp);
+    this.scene.achievementSystem?.checkAll();
 
     return message;
   }

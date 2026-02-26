@@ -78,6 +78,13 @@ export class UIScene extends Phaser.Scene {
       this.showNotification(`Level Up! ${title} (${maxSlots} pipeline slots)`, HIGHLIGHT);
     });
 
+    this._createSpeedButtons();
+
+    this.gameScene.events.on('achievement-earned', ({ name, bonus }) => {
+      const bonusStr = bonus ? ` (${bonus.type === 'qualityFloor' ? '+' + bonus.value + ' quality' : bonus.type === 'unlockSpeed' ? bonus.value + 'x speed' : '+' + Math.round(bonus.value * 100) + '% ' + bonus.type})` : '';
+      this.showNotification(`Achievement: ${name}${bonusStr}`, '#FFD700');
+    });
+
     // --- Controls hint ---
     this.controlsText = this.add.text(480, 632, 'ARROWS/WASD: Move | SPACE: Interact | TAB: Inbox | ESC: Menu', {
       fontSize: '9px', fontFamily: 'monospace', color: '#555577',
@@ -94,6 +101,55 @@ export class UIScene extends Phaser.Scene {
     this._createPipelinePanel();
     this._createRelationshipPanel();
     this._createActivityFeed();
+  }
+
+  // ===== SPEED BUTTONS =====
+
+  _createSpeedButtons() {
+    const speeds = [1, 2, 5];
+    this.speedButtons = [];
+    const baseX = 870;
+
+    for (let i = 0; i < speeds.length; i++) {
+      const spd = speeds[i];
+      const x = baseX + i * 30;
+      const bg = this.add.rectangle(x, 14, 26, 20, 0x222244, 0.8)
+        .setDepth(1).setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => {
+          const gs = this.gameScene.gameState;
+          if (this._isSpeedUnlocked(spd)) {
+            gs.speedMultiplier = spd;
+          }
+        });
+      const label = this.add.text(x, 14, `${spd}x`, {
+        fontSize: '9px', fontFamily: 'monospace', color: DIM_COLOR,
+      }).setOrigin(0.5).setDepth(2);
+      this.speedButtons.push({ speed: spd, bg, label });
+    }
+  }
+
+  _isSpeedUnlocked(speed) {
+    if (speed === 1) return true;
+    const gs = this.gameScene.gameState;
+    const achievements = gs.achievements ?? [];
+    if (speed === 2) {
+      return (gs.level ?? 1) >= 2 || achievements.includes('speed_reader');
+    }
+    if (speed === 5) {
+      return (gs.level ?? 1) >= 4 || achievements.includes('veteran_executive');
+    }
+    return false;
+  }
+
+  _updateSpeedButtons() {
+    const gs = this.gameScene.gameState;
+    const currentSpeed = gs?.speedMultiplier ?? 1;
+    for (const btn of this.speedButtons) {
+      const unlocked = this._isSpeedUnlocked(btn.speed);
+      const active = btn.speed === currentSpeed;
+      btn.bg.setFillStyle(active ? 0xD4721A : unlocked ? 0x222244 : 0x111122, active ? 1 : 0.8);
+      btn.label.setStyle({ color: active ? '#ffffff' : unlocked ? DIM_COLOR : '#333344' });
+    }
   }
 
   // ===== PIPELINE PANEL (right side) =====
@@ -517,5 +573,6 @@ export class UIScene extends Phaser.Scene {
     this._updateCompletedSection();
     this._updateRelationshipPanel();
     this._updateActivityFeed(delta);
+    this._updateSpeedButtons();
   }
 }
