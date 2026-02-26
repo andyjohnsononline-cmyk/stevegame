@@ -80,6 +80,10 @@ export class GameScene extends Phaser.Scene {
 
     this.backtickKey = this.input.keyboard.addKey(192);
 
+    this.spaceKey.removeAllListeners('down');
+    this.escKey.removeAllListeners('down');
+    this.tabKey.removeAllListeners('down');
+    this.backtickKey.removeAllListeners('down');
     this.spaceKey.on('down', () => this.handleInteract());
     this.escKey.on('down', () => this.togglePauseMenu());
     this.tabKey.on('down', () => this.openInbox());
