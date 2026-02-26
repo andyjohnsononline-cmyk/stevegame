@@ -65,6 +65,7 @@ export class TextureGenerator {
     this._generateDecorations(scene);
     this._generateEffects(scene);
     this._generateLand(scene);
+    this._generateStars(scene);
   }
 
   static _generatePlayer(scene) {
@@ -451,6 +452,28 @@ export class TextureGenerator {
     tex(scene, 'land_border', 384, 384, (g) => {
       g.lineStyle(2, PALETTE.grassDark, 0.6);
       g.strokeRect(1, 1, 382, 382);
+    });
+  }
+
+  static _generateStars(scene) {
+    tex(scene, 'star_filled', 14, 14, (g) => {
+      g.fillStyle(PALETTE.coin);
+      g.fillTriangle(7, 0, 5, 5, 0, 5);
+      g.fillTriangle(7, 0, 9, 5, 14, 5);
+      g.fillTriangle(1, 9, 5, 5, 7, 12);
+      g.fillTriangle(13, 9, 9, 5, 7, 12);
+      g.fillTriangle(5, 5, 9, 5, 7, 12);
+      g.fillStyle(PALETTE.coinDark);
+      g.fillRect(6, 3, 2, 2);
+    });
+
+    tex(scene, 'star_empty', 14, 14, (g) => {
+      g.fillStyle(0x444466);
+      g.fillTriangle(7, 0, 5, 5, 0, 5);
+      g.fillTriangle(7, 0, 9, 5, 14, 5);
+      g.fillTriangle(1, 9, 5, 5, 7, 12);
+      g.fillTriangle(13, 9, 9, 5, 7, 12);
+      g.fillTriangle(5, 5, 9, 5, 7, 12);
     });
   }
 }

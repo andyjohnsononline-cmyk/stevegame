@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { SaveSystem } from '../utils/SaveSystem.js';
 import { RESOURCE_TYPES } from '../data/resourceData.js';
 import { RECIPES } from '../data/craftingData.js';
+import { SFX } from '../utils/SoundGenerator.js';
+import { computeStarRating } from '../data/goalData.js';
 
 const HIGHLIGHT = '#E8913A';
 const TEXT_COLOR = '#F5E6CC';
@@ -30,6 +32,7 @@ export class UIScene extends Phaser.Scene {
     this._createInventoryBar();
     this._createXPBar();
     this._createLevelBadge();
+    this._createStarDisplay();
     this._createDeskPrompt();
     this._createCraftingPanel();
     this._createPauseOverlay();
@@ -41,8 +44,9 @@ export class UIScene extends Phaser.Scene {
     });
     this.gameScene.events.on('desk-proximity', (near) => this._onDeskProximity(near));
     this.gameScene.events.on('crafting-toggled', (open) => this._onCraftingToggled(open));
-    this.gameScene.events.on('level-up', (level) => this._onLevelUp(level));
+    this.gameScene.events.on('level-up', (level, upgradeLabel) => this._onLevelUp(level, upgradeLabel));
     this.gameScene.events.on('pause-toggled', () => this._togglePause());
+    this.gameScene.events.on('star-earned', (stars, label) => this._onStarEarned(stars, label));
 
     this._updateInventory();
     this._updateXP();
@@ -152,7 +156,71 @@ export class UIScene extends Phaser.Scene {
     }).setOrigin(1, 0.5).setDepth(2);
   }
 
-  _onLevelUp(level) {
+  // ===== STAR RATING =====
+
+  _createStarDisplay() {
+    this.starIcons = [];
+    const startX = 80;
+    for (let i = 0; i < 5; i++) {
+      const star = this.add.image(startX + i * 16, 14, 'star_empty')
+        .setDepth(2).setScale(1);
+      this.starIcons.push(star);
+    }
+    this._updateStars();
+  }
+
+  _updateStars() {
+    const gs = this.gameScene?.gameState;
+    if (!gs) return;
+    const stars = computeStarRating(gs);
+    for (let i = 0; i < 5; i++) {
+      this.starIcons[i].setTexture(i < stars ? 'star_filled' : 'star_empty');
+    }
+  }
+
+  _onStarEarned(stars, label) {
+    this._updateStars();
+    SFX.levelUp();
+
+    const banner = this.add.text(480, 120, `★ ${label} ★`, {
+      fontSize: '16px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000000', strokeThickness: 4,
+      backgroundColor: '#000000cc',
+      padding: { left: 14, right: 14, top: 6, bottom: 6 },
+    }).setOrigin(0.5).setDepth(30).setAlpha(0);
+
+    this.tweens.add({
+      targets: banner,
+      alpha: 1,
+      scaleX: { from: 0.5, to: 1 },
+      scaleY: { from: 0.5, to: 1 },
+      duration: 400,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: banner,
+          alpha: 0,
+          y: 100,
+          delay: 2000,
+          duration: 500,
+          onComplete: () => banner.destroy(),
+        });
+      },
+    });
+
+    for (let i = 0; i < stars; i++) {
+      this.tweens.add({
+        targets: this.starIcons[i],
+        scaleX: { from: 2, to: 1 },
+        scaleY: { from: 2, to: 1 },
+        duration: 300,
+        delay: i * 80,
+        ease: 'Back.easeOut',
+      });
+    }
+  }
+
+  _onLevelUp(level, upgradeLabel) {
     this.tweens.add({
       targets: this.levelBg,
       scaleX: { from: 2, to: 1 },
@@ -160,6 +228,33 @@ export class UIScene extends Phaser.Scene {
       duration: 400,
       ease: 'Back.easeOut',
     });
+
+    if (upgradeLabel) {
+      const banner = this.add.text(480, 80, `${upgradeLabel}!`, {
+        fontSize: '14px', fontFamily: 'monospace', color: '#44ff44',
+        stroke: '#000000', strokeThickness: 3,
+        backgroundColor: '#000000aa',
+        padding: { left: 10, right: 10, top: 4, bottom: 4 },
+      }).setOrigin(0.5).setDepth(25).setAlpha(0);
+
+      this.tweens.add({
+        targets: banner,
+        alpha: { from: 0, to: 1 },
+        y: { from: 90, to: 70 },
+        duration: 300,
+        ease: 'Back.easeOut',
+        onComplete: () => {
+          this.tweens.add({
+            targets: banner,
+            alpha: 0,
+            y: 55,
+            delay: 1500,
+            duration: 400,
+            onComplete: () => banner.destroy(),
+          });
+        },
+      });
+    }
   }
 
   _updateXP() {
@@ -210,8 +305,9 @@ export class UIScene extends Phaser.Scene {
   _createCraftingPanel() {
     this.craftContainer = this.add.container(480, 320).setDepth(20).setVisible(false);
 
-    const panelW = 280;
-    const panelH = 210;
+    const panelW = 290;
+    const rowH = 40;
+    const panelH = 30 + RECIPES.length * rowH + 20;
 
     const bg = this.add.rectangle(0, 0, panelW, panelH, 0x0d0d1a, 0.92);
     const border = this.add.rectangle(0, 0, panelW, panelH)
@@ -224,13 +320,13 @@ export class UIScene extends Phaser.Scene {
     this.craftContainer.add([bg, border, title]);
 
     this.recipeButtons = [];
-    const startY = -panelH / 2 + 38;
+    const startY = -panelH / 2 + 34;
 
     for (let i = 0; i < RECIPES.length; i++) {
       const recipe = RECIPES[i];
-      const ry = startY + i * 52;
+      const ry = startY + i * rowH;
 
-      const rowBg = this.add.rectangle(0, ry + 10, panelW - 16, 44, 0x222244, 0.6);
+      const rowBg = this.add.rectangle(0, ry + 10, panelW - 16, rowH - 4, 0x222244, 0.6);
 
       const inputIcons = [];
       const inputKeys = Object.keys(recipe.inputs);
@@ -239,28 +335,29 @@ export class UIScene extends Phaser.Scene {
       for (let j = 0; j < inputKeys.length; j++) {
         const resId = inputKeys[j];
         const rtype = RESOURCE_TYPES[resId];
-        const ix = iconStartX + j * 28;
-        const ic = this.add.image(ix, ry + 2, rtype.dropTexture).setScale(1.2);
-        const ct = this.add.text(ix + 8, ry + 8, `${recipe.inputs[resId]}`, {
+        const ix = iconStartX + j * 24;
+        const ic = this.add.image(ix, ry + 4, rtype.dropTexture).setScale(1.1);
+        const ct = this.add.text(ix + 7, ry + 10, `${recipe.inputs[resId]}`, {
           fontSize: '7px', fontFamily: 'monospace', color: TEXT_COLOR,
           stroke: '#000', strokeThickness: 2,
         }).setOrigin(0.5);
         inputIcons.push(ic, ct);
       }
 
-      const arrow = this.add.text(iconStartX + inputKeys.length * 28, ry + 2, '->', {
-        fontSize: '9px', fontFamily: 'monospace', color: DIM_COLOR,
+      const arrowX = iconStartX + inputKeys.length * 24 + 2;
+      const arrow = this.add.text(arrowX, ry + 4, '->', {
+        fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
       }).setOrigin(0, 0.5);
 
       const outType = RESOURCE_TYPES[recipe.output.type];
-      const outIcon = this.add.image(iconStartX + inputKeys.length * 28 + 26, ry + 2,
-        outType?.dropTexture ?? 'drop_coin').setScale(1.2);
+      const outIcon = this.add.image(arrowX + 22, ry + 4,
+        outType?.dropTexture ?? 'drop_coin').setScale(1.1);
 
       const nameText = this.add.text(iconStartX, ry + 18, recipe.name, {
-        fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
+        fontSize: '7px', fontFamily: 'monospace', color: DIM_COLOR,
       });
 
-      const btn = this.add.rectangle(panelW / 2 - 40, ry + 10, 50, 28, 0xe8913a, 0.9)
+      const btn = this.add.rectangle(panelW / 2 - 38, ry + 10, 46, 24, 0xe8913a, 0.9)
         .setDepth(21).setInteractive({ useHandCursor: true })
         .on('pointerover', () => btn.setFillStyle(0xf09530))
         .on('pointerout', () => btn.setFillStyle(0xe8913a, 0.9))
@@ -277,8 +374,8 @@ export class UIScene extends Phaser.Scene {
           }
         });
 
-      const btnLabel = this.add.text(panelW / 2 - 40, ry + 10, 'CRAFT', {
-        fontSize: '8px', fontFamily: 'monospace', color: '#ffffff',
+      const btnLabel = this.add.text(panelW / 2 - 38, ry + 10, 'CRAFT', {
+        fontSize: '7px', fontFamily: 'monospace', color: '#ffffff',
       }).setOrigin(0.5).setDepth(22);
 
       this.craftContainer.add([rowBg, ...inputIcons, arrow, outIcon, nameText, btn, btnLabel]);
@@ -293,7 +390,12 @@ export class UIScene extends Phaser.Scene {
 
   _onCraftingToggled(open) {
     this.craftContainer.setVisible(open);
-    if (open) this._updateCraftingPanel();
+    if (open) {
+      this._updateCraftingPanel();
+      SFX.uiOpen();
+    } else {
+      SFX.uiClose();
+    }
   }
 
   _updateCraftingPanel() {
@@ -380,6 +482,7 @@ export class UIScene extends Phaser.Scene {
 
   update() {
     this._updateXP();
+    this._updateStars();
 
     if (this.craftContainer.visible) {
       this._updateCraftingPanel();

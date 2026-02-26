@@ -20,4 +20,25 @@ export const RECIPES = [
     inputs: { project: 1, coffee: 1 },
     output: { type: 'coin', amount: 10, xp: 10 },
   },
+  {
+    id: 'documentary',
+    name: 'Documentary',
+    description: 'A quick low-budget production',
+    inputs: { script: 2, coffee: 1 },
+    output: { type: 'coin', amount: 6, xp: 6 },
+  },
+  {
+    id: 'reality_show',
+    name: 'Reality Show',
+    description: 'No script needed, just drama',
+    inputs: { idea: 2, contact: 2 },
+    output: { type: 'coin', amount: 8, xp: 8 },
+  },
+  {
+    id: 'blockbuster',
+    name: 'Blockbuster',
+    description: 'The ultimate production',
+    inputs: { project: 1, pitch: 1 },
+    output: { type: 'coin', amount: 25, xp: 20 },
+  },
 ];

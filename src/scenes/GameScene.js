@@ -2,12 +2,12 @@ import Phaser from 'phaser';
 import { SaveSystem } from '../utils/SaveSystem.js';
 import { RESOURCE_TYPES, LAND_TILE_SIZE, GRID_SIZE, WORLD_PX, getLandNodes, getLandCost } from '../data/resourceData.js';
 import { RECIPES } from '../data/craftingData.js';
+import { SFX } from '../utils/SoundGenerator.js';
+import { getStatsForLevel, LEVEL_UPGRADES } from '../data/upgradeData.js';
+import { computeStarRating, STAR_MILESTONES } from '../data/goalData.js';
 
 const TILE = 32;
-const PLAYER_SPEED = 180;
 const AUTO_ATTACK_RANGE = 36;
-const AUTO_ATTACK_CD = 280;
-const MAGNET_RANGE = 90;
 const MAGNET_SPEED = 350;
 const DESK_OFFSET_X = 0;
 const DESK_OFFSET_Y = -40;
@@ -38,6 +38,10 @@ export class GameScene extends Phaser.Scene {
     this.nearDesk = false;
     this.craftingOpen = false;
     this.saveTimer = 0;
+    this.autoCraftTimer = 0;
+    this.currentStars = computeStarRating(this.gameState);
+
+    this._refreshStats();
 
     this._buildWorld();
     this._createPlayer();
@@ -50,6 +54,11 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(2);
 
     this.scene.launch('UIScene', { gameScene: this });
+  }
+
+  _refreshStats() {
+    const s = getStatsForLevel(this.gameState.level ?? 1);
+    this.stats = s;
   }
 
   // ===== WORLD BUILDING =====
@@ -176,12 +185,14 @@ export class GameScene extends Phaser.Scene {
 
     this._updateBuyIcons();
     this.cameras.main.shake(200, 0.01);
+    SFX.buyLand();
 
     this._showFloatingText(
       ox + LAND_TILE_SIZE / 2, oy + LAND_TILE_SIZE / 2,
       'NEW LAND!', '#44ff44'
     );
 
+    this._checkMilestones();
     return true;
   }
 
@@ -293,6 +304,9 @@ export class GameScene extends Phaser.Scene {
 
     drop.setData('collectible', false);
 
+    const pitchMap = { script: 0, idea: 1, coffee: 2, contact: 3, coin: 4, pitch: 5, project: 6, xp_orb: 7 };
+    SFX.collect(pitchMap[resourceId] ?? 0);
+
     if (resourceId === 'xp_orb') {
       this.gameState.xp = (this.gameState.xp ?? 0) + 1;
       this._checkLevelUp();
@@ -326,9 +340,9 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      if (dist < MAGNET_RANGE) {
+      if (dist < this.stats.magnetRange) {
         const angle = Math.atan2(py - drop.y, px - drop.x);
-        const speed = MAGNET_SPEED * (1 - dist / MAGNET_RANGE) + 100;
+        const speed = MAGNET_SPEED * (1 - dist / this.stats.magnetRange) + 100;
         drop.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
         drop.setData('magnetized', true);
       }
@@ -342,22 +356,24 @@ export class GameScene extends Phaser.Scene {
     if (this.attackCooldown > 0) return;
     if (this.craftingOpen) return;
 
-    let closest = null;
-    let closestDist = AUTO_ATTACK_RANGE;
-
+    const targets = [];
     for (const node of this.resourceNodes) {
       if (node.depleted) continue;
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, node.x, node.y);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closest = node;
+      if (dist < AUTO_ATTACK_RANGE) {
+        targets.push({ node, dist });
       }
     }
 
-    if (!closest) return;
+    if (targets.length === 0) return;
 
-    this.attackCooldown = AUTO_ATTACK_CD;
-    this._hitNode(closest);
+    targets.sort((a, b) => a.dist - b.dist);
+    const hitCount = Math.min(targets.length, this.stats.multiHit);
+
+    this.attackCooldown = this.stats.attackCooldown;
+    for (let i = 0; i < hitCount; i++) {
+      this._hitNode(targets[i].node);
+    }
   }
 
   _hitNode(node) {
@@ -383,6 +399,8 @@ export class GameScene extends Phaser.Scene {
 
     if (node.hp <= 0) {
       this._breakNode(node);
+    } else {
+      SFX.hit();
     }
   }
 
@@ -393,8 +411,9 @@ export class GameScene extends Phaser.Scene {
     node.setAlpha(0.4);
 
     this.cameras.main.shake(80, 0.006);
+    SFX.breakNode();
 
-    const dropCount = Phaser.Math.Between(rtype.dropMin, rtype.dropMax);
+    const dropCount = Phaser.Math.Between(rtype.dropMin, rtype.dropMax) + this.stats.dropBonus;
     this._spawnDrop(node.x, node.y, rtype.id, dropCount);
 
     if (rtype.gatherXP) {
@@ -545,22 +564,28 @@ export class GameScene extends Phaser.Scene {
     const deskY = 2.5 * LAND_TILE_SIZE + DESK_OFFSET_Y;
 
     if (recipe.output.type === 'coin' && recipe.output.xp) {
-      inv.coin = (inv.coin ?? 0) + recipe.output.amount;
-      this.gameState.xp = (this.gameState.xp ?? 0) + recipe.output.xp;
-      this.gameState.totalCoins = (this.gameState.totalCoins ?? 0) + recipe.output.amount;
+      const levelBonus = (this.gameState.level ?? 1) - 1;
+      const coinAmount = recipe.output.amount + levelBonus;
+      const xpAmount = recipe.output.xp + Math.floor(levelBonus / 2);
+
+      inv.coin = (inv.coin ?? 0) + coinAmount;
+      this.gameState.xp = (this.gameState.xp ?? 0) + xpAmount;
+      this.gameState.totalCoins = (this.gameState.totalCoins ?? 0) + coinAmount;
       this.gameState.totalProjects = (this.gameState.totalProjects ?? 0) + 1;
       this._checkLevelUp();
 
-      this._spawnDrop(deskX, deskY - 10, 'coin', Math.min(recipe.output.amount, 8));
-      this._showFloatingText(deskX, deskY - 30, `+${recipe.output.xp} XP`, '#E8913A');
+      this._spawnDrop(deskX, deskY - 10, 'coin', Math.min(coinAmount, 8));
+      this._showFloatingText(deskX, deskY - 30, `+${xpAmount} XP`, '#E8913A');
 
       this.cameras.main.shake(120, 0.008);
+      this._checkMilestones();
     } else {
       inv[recipe.output.type] = (inv[recipe.output.type] ?? 0) + recipe.output.amount;
     }
 
     this.events.emit('inventory-changed');
     this._showFloatingText(deskX, deskY - 45, `${recipe.name}!`, '#44cc44');
+    SFX.craft();
 
     this.tweens.add({
       targets: this.desk,
@@ -585,9 +610,27 @@ export class GameScene extends Phaser.Scene {
     }
     if (newLevel > (this.gameState.level ?? 1)) {
       this.gameState.level = newLevel;
-      this.events.emit('level-up', newLevel);
+      this._refreshStats();
+      const upgrade = LEVEL_UPGRADES[newLevel];
+      this.events.emit('level-up', newLevel, upgrade?.label);
       this._showFloatingText(this.player.x, this.player.y - 20, `LEVEL ${newLevel}!`, '#FFD700');
+      if (upgrade?.label) {
+        this._showFloatingText(this.player.x, this.player.y - 35, upgrade.label, '#44ff44');
+      }
       this.cameras.main.shake(200, 0.012);
+      SFX.levelUp();
+    }
+  }
+
+  _checkMilestones() {
+    const newStars = computeStarRating(this.gameState);
+    if (newStars > this.currentStars) {
+      const milestone = STAR_MILESTONES.find(m => m.star === newStars);
+      this.currentStars = newStars;
+      this.events.emit('star-earned', newStars, milestone?.label);
+      this._showFloatingText(this.player.x, this.player.y - 45, `${milestone?.label ?? 'New Star'}!`, '#FFD700');
+      this.cameras.main.shake(300, 0.015);
+      SFX.levelUp();
     }
   }
 
@@ -609,6 +652,7 @@ export class GameScene extends Phaser.Scene {
     this._autoAttack(delta);
     this._magnetizeDrops();
     this._checkDeskProximity();
+    this._autoCraft(delta);
 
     this.saveTimer += delta;
     if (this.saveTimer >= 20000) {
@@ -644,7 +688,7 @@ export class GameScene extends Phaser.Scene {
       vy *= 0.7071;
     }
 
-    this.player.setVelocity(vx * PLAYER_SPEED, vy * PLAYER_SPEED);
+    this.player.setVelocity(vx * this.stats.moveSpeed, vy * this.stats.moveSpeed);
     this.isMoving = vx !== 0 || vy !== 0;
 
     if (this.isMoving) {
@@ -664,6 +708,24 @@ export class GameScene extends Phaser.Scene {
       this.player.y += bob * 0.05;
     } else {
       this.bobTimer = 0;
+    }
+  }
+
+  _autoCraft(delta) {
+    if (!this.stats.autoCraft || !this.nearDesk) return;
+    this.autoCraftTimer += delta;
+    if (this.autoCraftTimer < 1500) return;
+    this.autoCraftTimer = 0;
+
+    for (const recipe of RECIPES) {
+      const inv = this.gameState.inventory;
+      const canCraft = Object.entries(recipe.inputs).every(
+        ([res, amount]) => (inv[res] ?? 0) >= amount
+      );
+      if (canCraft) {
+        this.craft(recipe.id);
+        return;
+      }
     }
   }
 
