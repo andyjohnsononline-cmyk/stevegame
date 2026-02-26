@@ -1,29 +1,16 @@
 import Phaser from 'phaser';
-import { Player } from '../entities/Player.js';
-import { NPC } from '../entities/NPC.js';
-import { TimeSystem } from '../systems/TimeSystem.js';
-import { ScriptEngine } from '../systems/ScriptEngine.js';
-import { NotesSystem } from '../systems/NotesSystem.js';
-import { RelationshipSystem } from '../systems/RelationshipSystem.js';
-import { PipelineSystem } from '../systems/PipelineSystem.js';
-import { LevelSystem } from '../systems/LevelSystem.js';
-import { UpgradeSystem } from '../systems/UpgradeSystem.js';
-import { AutomationSystem } from '../systems/AutomationSystem.js';
-import { AchievementSystem } from '../systems/AchievementSystem.js';
-import { OfflineProgressSystem } from '../systems/OfflineProgressSystem.js';
 import { SaveSystem } from '../utils/SaveSystem.js';
-import { getLocation } from '../data/locationData.js';
-import { getDialogueChoice } from '../data/dialogueChoiceData.js';
+import { RESOURCE_TYPES, LAND_TILE_SIZE, GRID_SIZE, WORLD_PX, getLandNodes, getLandCost } from '../data/resourceData.js';
+import { RECIPES } from '../data/craftingData.js';
 
 const TILE = 32;
-
-const OBJ_TEXTURES = {
-  desk: 'obj_desk',
-  chair: 'obj_chair',
-  table: 'obj_table',
-  bookshelf: 'obj_bookshelf',
-  door: 'obj_door',
-};
+const PLAYER_SPEED = 180;
+const AUTO_ATTACK_RANGE = 36;
+const AUTO_ATTACK_CD = 280;
+const MAGNET_RANGE = 90;
+const MAGNET_SPEED = 350;
+const DESK_OFFSET_X = 0;
+const DESK_OFFSET_Y = -40;
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -41,32 +28,458 @@ export class GameScene extends Phaser.Scene {
       this.gameState = SaveSystem.getDefaultState();
     }
 
-    this.npcs = [];
-    this.interactables = [];
-    this.exitZones = [];
-    this.timePaused = false;
-    this.transitioning = false;
+    this.physics.world.setBounds(0, 0, WORLD_PX, WORLD_PX);
 
-    this.timeSystem = new TimeSystem(this);
-    this.scriptEngine = new ScriptEngine(this);
-    this.notesSystem = new NotesSystem(this);
-    this.relationshipSystem = new RelationshipSystem(this);
-    this.pipelineSystem = new PipelineSystem(this);
-    this.levelSystem = new LevelSystem(this);
-    this.upgradeSystem = new UpgradeSystem(this);
-    this.automationSystem = new AutomationSystem(this);
-    this.achievementSystem = new AchievementSystem(this);
-    this.pipelineSystem.migrateScripts();
+    this.resourceNodes = [];
+    this.landTiles = {};
+    this.landBuyIcons = {};
+    this.attackCooldown = 0;
+    this.bobTimer = 0;
+    this.nearDesk = false;
+    this.craftingOpen = false;
+    this.saveTimer = 0;
 
-    this.events.on('day-advanced', () => this._onNewDay());
+    this._buildWorld();
+    this._createPlayer();
+    this._spawnLandNodes();
+    this._setupDropGroup();
+    this._setupInput();
 
-    if (this.gameState.budget === undefined) this.gameState.budget = 300;
+    this.cameras.main.setBounds(0, 0, WORLD_PX, WORLD_PX);
+    this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
+    this.cameras.main.setZoom(2);
 
-    if (!this.gameState.inbox) this.gameState.inbox = [];
-    if (this.gameState.inbox.length === 0) {
-      this.scriptEngine.populateInbox(3);
+    this.scene.launch('UIScene', { gameScene: this });
+  }
+
+  // ===== WORLD BUILDING =====
+
+  _buildWorld() {
+    for (let gx = 0; gx < GRID_SIZE; gx++) {
+      for (let gy = 0; gy < GRID_SIZE; gy++) {
+        const key = `${gx},${gy}`;
+        const ox = gx * LAND_TILE_SIZE;
+        const oy = gy * LAND_TILE_SIZE;
+        const unlocked = this.gameState.unlockedLands.includes(key);
+
+        if (unlocked) {
+          this._fillLandGrass(ox, oy);
+        } else {
+          this._fillLandLocked(ox, oy);
+        }
+
+        this.landTiles[key] = { gx, gy, unlocked };
+      }
     }
 
+    this._updateBuyIcons();
+
+    const cx = 2.5 * LAND_TILE_SIZE;
+    const cy = 2.5 * LAND_TILE_SIZE;
+    this.desk = this.physics.add.staticImage(cx + DESK_OFFSET_X, cy + DESK_OFFSET_Y, 'desk').setDepth(3);
+    this.desk.body.setSize(48, 20);
+    this.desk.body.setOffset(0, 10);
+  }
+
+  _fillLandGrass(ox, oy) {
+    for (let x = ox; x < ox + LAND_TILE_SIZE; x += TILE) {
+      for (let y = oy; y < oy + LAND_TILE_SIZE; y += TILE) {
+        const variant = ((x / TILE + y / TILE) % 3 === 0) ? 'tile_grass_alt' : 'tile_grass';
+        this.add.image(x + TILE / 2, y + TILE / 2, variant).setDepth(0);
+      }
+    }
+
+    const numFlowers = 2 + (((ox + oy) * 7) % 3);
+    for (let i = 0; i < numFlowers; i++) {
+      const fx = ox + 30 + ((i * 97 + ox) % (LAND_TILE_SIZE - 60));
+      const fy = oy + 30 + ((i * 71 + oy) % (LAND_TILE_SIZE - 60));
+      this.add.image(fx, fy, 'deco_flower').setDepth(1).setAlpha(0.7);
+    }
+  }
+
+  _fillLandLocked(ox, oy) {
+    for (let x = ox; x < ox + LAND_TILE_SIZE; x += TILE) {
+      for (let y = oy; y < oy + LAND_TILE_SIZE; y += TILE) {
+        this.add.image(x + TILE / 2, y + TILE / 2, 'land_locked').setDepth(0);
+      }
+    }
+  }
+
+  _updateBuyIcons() {
+    for (const k of Object.keys(this.landBuyIcons)) {
+      this.landBuyIcons[k].icon?.destroy();
+      this.landBuyIcons[k].text?.destroy();
+      this.landBuyIcons[k].glow?.destroy();
+      delete this.landBuyIcons[k];
+    }
+
+    for (let gx = 0; gx < GRID_SIZE; gx++) {
+      for (let gy = 0; gy < GRID_SIZE; gy++) {
+        const key = `${gx},${gy}`;
+        if (this.gameState.unlockedLands.includes(key)) continue;
+        if (!this._isAdjacentToUnlocked(gx, gy)) continue;
+
+        const cx = gx * LAND_TILE_SIZE + LAND_TILE_SIZE / 2;
+        const cy = gy * LAND_TILE_SIZE + LAND_TILE_SIZE / 2;
+        const cost = getLandCost(this.gameState.landsPurchased);
+
+        const icon = this.add.image(cx, cy - 10, 'land_buy_icon').setDepth(8).setAlpha(0.85);
+        const text = this.add.text(cx, cy + 18, `${cost}`, {
+          fontSize: '10px', fontFamily: 'monospace', color: '#FFD700',
+          stroke: '#000000', strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(8);
+
+        this.tweens.add({
+          targets: [icon],
+          scaleX: { from: 0.9, to: 1.1 },
+          scaleY: { from: 0.9, to: 1.1 },
+          duration: 1200,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+
+        this.landBuyIcons[key] = { icon, text, gx, gy, cost };
+      }
+    }
+  }
+
+  _isAdjacentToUnlocked(gx, gy) {
+    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    for (const [dx, dy] of dirs) {
+      const nk = `${gx + dx},${gy + dy}`;
+      if (this.gameState.unlockedLands.includes(nk)) return true;
+    }
+    return false;
+  }
+
+  buyLand(gx, gy) {
+    const key = `${gx},${gy}`;
+    if (this.gameState.unlockedLands.includes(key)) return false;
+
+    const cost = getLandCost(this.gameState.landsPurchased);
+    if ((this.gameState.inventory.coin ?? 0) < cost) return false;
+
+    this.gameState.inventory.coin -= cost;
+    this.gameState.unlockedLands.push(key);
+    this.gameState.landsPurchased++;
+    this.events.emit('inventory-changed');
+
+    const ox = gx * LAND_TILE_SIZE;
+    const oy = gy * LAND_TILE_SIZE;
+    this._fillLandGrass(ox, oy);
+
+    const nodes = getLandNodes(gx, gy);
+    for (const n of nodes) {
+      this._spawnNode(n.type, n.x, n.y);
+    }
+
+    this._updateBuyIcons();
+    this.cameras.main.shake(200, 0.01);
+
+    this._showFloatingText(
+      ox + LAND_TILE_SIZE / 2, oy + LAND_TILE_SIZE / 2,
+      'NEW LAND!', '#44ff44'
+    );
+
+    return true;
+  }
+
+  // ===== PLAYER =====
+
+  _createPlayer() {
+    const px = this.gameState.playerX;
+    const py = this.gameState.playerY;
+    this.player = this.physics.add.sprite(px, py, 'player_down').setDepth(5);
+    this.player.setCollideWorldBounds(true);
+    this.player.body.setSize(10, 10);
+    this.player.body.setOffset(3, 6);
+    this.facing = 'down';
+    this.isMoving = false;
+  }
+
+  // ===== RESOURCE NODES =====
+
+  _spawnLandNodes() {
+    for (const landKey of this.gameState.unlockedLands) {
+      const [gx, gy] = landKey.split(',').map(Number);
+      const nodes = getLandNodes(gx, gy);
+      for (const n of nodes) {
+        this._spawnNode(n.type, n.x, n.y);
+      }
+    }
+  }
+
+  _spawnNode(type, x, y) {
+    const rtype = RESOURCE_TYPES[type];
+    if (!rtype || !rtype.nodeTexture) return;
+
+    const node = this.physics.add.staticImage(x, y, rtype.nodeTexture).setDepth(3);
+    node.resourceType = rtype;
+    node.hp = rtype.hitsToBreak;
+    node.maxHp = rtype.hitsToBreak;
+    node.depleted = false;
+    this.resourceNodes.push(node);
+  }
+
+  // ===== DROPS =====
+
+  _setupDropGroup() {
+    this.drops = this.physics.add.group();
+  }
+
+  _spawnDrop(x, y, resourceId, count) {
+    const n = count ?? 1;
+    for (let i = 0; i < n; i++) {
+      this.time.delayedCall(i * 60, () => this._spawnSingleDrop(x, y, resourceId));
+    }
+  }
+
+  _spawnSingleDrop(x, y, resourceId) {
+    const rtype = RESOURCE_TYPES[resourceId];
+    if (!rtype) return;
+
+    const drop = this.physics.add.sprite(x, y, rtype.dropTexture).setDepth(4);
+    drop.setData('resourceId', resourceId);
+    drop.setData('collectible', false);
+    drop.setData('magnetized', false);
+
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 50;
+    drop.setVelocity(
+      Math.cos(angle) * speed,
+      Math.sin(angle) * speed - 100
+    );
+    drop.setBounce(0.4);
+    drop.setDrag(200);
+
+    this.drops.add(drop);
+
+    this.tweens.add({
+      targets: drop,
+      scaleX: { from: 0, to: 1.3 },
+      scaleY: { from: 0, to: 1.3 },
+      duration: 150,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: drop,
+          scaleX: 1, scaleY: 1,
+          duration: 100,
+        });
+      },
+    });
+
+    this.time.delayedCall(350, () => {
+      if (drop.active) {
+        drop.setData('collectible', true);
+        drop.setVelocity(0, 0);
+        drop.setDrag(0);
+        this.tweens.add({
+          targets: drop,
+          y: drop.y - 3,
+          duration: 600,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+      }
+    });
+  }
+
+  _collectDrop(drop) {
+    const resourceId = drop.getData('resourceId');
+    if (!resourceId) return;
+
+    drop.setData('collectible', false);
+
+    if (resourceId === 'xp_orb') {
+      this.gameState.xp = (this.gameState.xp ?? 0) + 1;
+      this._checkLevelUp();
+    } else {
+      this.gameState.inventory[resourceId] = (this.gameState.inventory[resourceId] ?? 0) + 1;
+    }
+    this.events.emit('inventory-changed');
+
+    this.tweens.killTweensOf(drop);
+    this.tweens.add({
+      targets: drop,
+      scaleX: 1.5, scaleY: 1.5,
+      alpha: 0,
+      duration: 150,
+      ease: 'Power2',
+      onComplete: () => drop.destroy(),
+    });
+  }
+
+  _magnetizeDrops() {
+    const px = this.player.x;
+    const py = this.player.y;
+
+    this.drops.getChildren().forEach((drop) => {
+      if (!drop.active || !drop.getData('collectible')) return;
+
+      const dist = Phaser.Math.Distance.Between(px, py, drop.x, drop.y);
+
+      if (dist < 16) {
+        this._collectDrop(drop);
+        return;
+      }
+
+      if (dist < MAGNET_RANGE) {
+        const angle = Math.atan2(py - drop.y, px - drop.x);
+        const speed = MAGNET_SPEED * (1 - dist / MAGNET_RANGE) + 100;
+        drop.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+        drop.setData('magnetized', true);
+      }
+    });
+  }
+
+  // ===== AUTO ATTACK =====
+
+  _autoAttack(delta) {
+    this.attackCooldown -= delta;
+    if (this.attackCooldown > 0) return;
+    if (this.craftingOpen) return;
+
+    let closest = null;
+    let closestDist = AUTO_ATTACK_RANGE;
+
+    for (const node of this.resourceNodes) {
+      if (node.depleted) continue;
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, node.x, node.y);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = node;
+      }
+    }
+
+    if (!closest) return;
+
+    this.attackCooldown = AUTO_ATTACK_CD;
+    this._hitNode(closest);
+  }
+
+  _hitNode(node) {
+    node.hp--;
+
+    this.tweens.add({
+      targets: node,
+      scaleX: { from: 1.3, to: 1 },
+      scaleY: { from: 0.7, to: 1 },
+      duration: 120,
+      ease: 'Back.easeOut',
+    });
+
+    this.tweens.add({
+      targets: this.player,
+      scaleX: { from: 1.2, to: 1 },
+      scaleY: { from: 0.85, to: 1 },
+      duration: 100,
+      ease: 'Back.easeOut',
+    });
+
+    this._spawnHitParticles(node.x, node.y);
+
+    if (node.hp <= 0) {
+      this._breakNode(node);
+    }
+  }
+
+  _breakNode(node) {
+    const rtype = node.resourceType;
+    node.depleted = true;
+    node.setTexture(rtype.nodeTexture + '_depleted');
+    node.setAlpha(0.4);
+
+    this.cameras.main.shake(80, 0.006);
+
+    const dropCount = Phaser.Math.Between(rtype.dropMin, rtype.dropMax);
+    this._spawnDrop(node.x, node.y, rtype.id, dropCount);
+
+    if (rtype.gatherXP) {
+      for (let i = 0; i < rtype.gatherXP; i++) {
+        this.time.delayedCall(dropCount * 60 + i * 80, () => {
+          this._spawnSingleDrop(node.x, node.y, 'xp_orb');
+        });
+      }
+    }
+
+    this._spawnBreakParticles(node.x, node.y);
+
+    this.time.delayedCall(rtype.respawnTime, () => {
+      if (!node.active) return;
+      node.depleted = false;
+      node.hp = node.maxHp;
+      node.setTexture(rtype.nodeTexture);
+      node.setAlpha(1);
+      this.tweens.add({
+        targets: node,
+        scaleX: { from: 0, to: 1 },
+        scaleY: { from: 0, to: 1 },
+        duration: 300,
+        ease: 'Back.easeOut',
+      });
+    });
+  }
+
+  _spawnHitParticles(x, y) {
+    for (let i = 0; i < 3; i++) {
+      const p = this.add.image(x, y, 'particle_hit').setDepth(9).setScale(0.5);
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 10 + Math.random() * 15;
+      this.tweens.add({
+        targets: p,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        scaleX: 0,
+        scaleY: 0,
+        duration: 250 + Math.random() * 100,
+        ease: 'Power2',
+        onComplete: () => p.destroy(),
+      });
+    }
+  }
+
+  _spawnBreakParticles(x, y) {
+    for (let i = 0; i < 6; i++) {
+      const p = this.add.image(x, y, 'particle_spark').setDepth(9);
+      const angle = (i / 6) * Math.PI * 2;
+      const dist = 15 + Math.random() * 20;
+      this.tweens.add({
+        targets: p,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist - 10,
+        alpha: 0,
+        scaleX: { from: 1, to: 0 },
+        scaleY: { from: 1, to: 0 },
+        duration: 350 + Math.random() * 150,
+        ease: 'Power3',
+        onComplete: () => p.destroy(),
+      });
+    }
+  }
+
+  _showFloatingText(x, y, text, color) {
+    const ft = this.add.text(x, y, text, {
+      fontSize: '8px', fontFamily: 'monospace', color,
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(10);
+
+    this.tweens.add({
+      targets: ft,
+      y: y - 25,
+      alpha: { from: 1, to: 0 },
+      duration: 800,
+      ease: 'Power2',
+      onComplete: () => ft.destroy(),
+    });
+  }
+
+  // ===== INPUT =====
+
+  _setupInput() {
     this.cursors = this.input.keyboard.createCursorKeys();
     this.wasd = {
       up: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
@@ -74,408 +487,200 @@ export class GameScene extends Phaser.Scene {
       left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
       right: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
-    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    this.eKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.escKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-    this.tabKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
+    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-    this.backtickKey = this.input.keyboard.addKey(192);
-
-    this.spaceKey.removeAllListeners('down');
-    this.escKey.removeAllListeners('down');
-    this.tabKey.removeAllListeners('down');
-    this.backtickKey.removeAllListeners('down');
-    this.spaceKey.on('down', () => this.handleInteract());
-    this.escKey.on('down', () => this.togglePauseMenu());
-    this.tabKey.on('down', () => this.openInbox());
-    this.backtickKey.on('down', () => this.toggleDebug());
-
-    this.interactPrompt = this.add.text(0, 0, '', {
-      fontSize: '11px', fontFamily: 'monospace', color: '#FFD700',
-      backgroundColor: '#000000AA', padding: { left: 6, right: 6, top: 3, bottom: 3 },
-    }).setDepth(200).setVisible(false);
-
-    this.locationBanner = this.add.text(480, 40, '', {
-      fontSize: '20px', fontFamily: 'Georgia, serif', color: '#F5E6CC',
-      stroke: '#000', strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(200).setAlpha(0).setScrollFactor(0);
-
-    this.messageText = this.add.text(480, 580, '', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#F5E6CC',
-      backgroundColor: '#000000CC',
-      padding: { left: 12, right: 12, top: 6, bottom: 6 },
-    }).setOrigin(0.5).setDepth(200).setAlpha(0).setScrollFactor(0);
-
-    this.loadLocation(this.gameState.currentLocation ?? 'houseboat');
-    this.scene.launch('UIScene', { gameScene: this });
-
-    if (this.loadSave) {
-      const offlineResult = OfflineProgressSystem.calculate(
-        this.gameState, this.pipelineSystem, this.scriptEngine, this.levelSystem
-      );
-      if (offlineResult.daysElapsed > 0 || offlineResult.scriptsReleased > 0) {
-        this.achievementSystem.checkAll();
-        this.timePaused = true;
-        this.player?.setInUI(true);
-        this.scene.launch('DialogueScene', {
-          gameScene: this,
-          mode: 'welcome_back',
-          offlineResult,
-        });
-      }
-    }
+    this.eKey.on('down', () => this._toggleCrafting());
+    this.escKey.on('down', () => this._togglePause());
+    this.spaceKey.on('down', () => this._onSpace());
   }
 
-  loadLocation(locationId) {
-    const loc = getLocation(locationId);
-    if (!loc) return;
+  _onSpace() {
+    if (this.craftingOpen) return;
 
-    this.cleanupLocation();
-    this.gameState.currentLocation = locationId;
-    this.currentLocation = loc;
-
-    const mapW = loc.mapWidth * TILE;
-    const mapH = loc.mapHeight * TILE;
-    this.physics.world.setBounds(0, 0, mapW, mapH);
-    this.cameras.main.setBounds(0, 0, mapW, mapH);
-
-    this.wallGroup = this.physics.add.staticGroup();
-
-    const floorKey = loc.tileFloor ?? 'tile_office_floor';
-    const wallKey = loc.tileWall ?? 'tile_wall';
-
-    for (let row = 0; row < loc.mapHeight; row++) {
-      for (let col = 0; col < loc.mapWidth; col++) {
-        const px = col * TILE + TILE / 2;
-        const py = row * TILE + TILE / 2;
-        const isWall = loc.wallMap?.[row]?.[col] === 1;
-
-        const texKey = isWall ? wallKey : floorKey;
-        const fallback = this.textures.exists(texKey) ? texKey : 'tile_office_floor';
-        this.add.image(px, py, fallback).setDepth(0);
-
-        if (isWall) {
-          const wall = this.wallGroup.create(px, py, null);
-          wall.setVisible(false);
-          wall.body.setSize(TILE, TILE);
-          wall.refreshBody();
-        }
-      }
-    }
-
-    this.interactables = [];
-    for (const obj of (loc.interactables ?? [])) {
-      const px = obj.x * TILE + TILE / 2;
-      const py = obj.y * TILE + TILE / 2;
-      const texKey = OBJ_TEXTURES[obj.type] ?? 'obj_desk';
-      const fallback = this.textures.exists(texKey) ? texKey : 'obj_desk';
-      this.add.image(px, py, fallback).setDepth(2);
-      this.interactables.push({ ...obj, px, py });
-    }
-
-    this.exitZones = [];
-    for (const exit of (loc.exits ?? [])) {
-      const px = exit.x * TILE + TILE / 2;
-      const py = exit.y * TILE + TILE / 2;
-      if (this.textures.exists('obj_door')) {
-        this.add.image(px, py, 'obj_door').setDepth(2);
-      }
-      this.add.text(px, py - 20, exit.label, {
-        fontSize: '9px', fontFamily: 'monospace', color: '#FFD700',
-        stroke: '#000', strokeThickness: 2,
-      }).setOrigin(0.5).setDepth(6);
-      this.exitZones.push({ ...exit, px, py });
-    }
-
-    const spawn = this.gameState.playerPos ?? { x: Math.floor(loc.mapWidth / 2), y: Math.floor(loc.mapHeight / 2) };
-    if (this.player) this.player.destroy();
-    this.player = new Player(this, spawn.x * TILE + TILE / 2, spawn.y * TILE + TILE / 2);
-    this.player.setDepth(10);
-    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
-    this.physics.add.collider(this.player, this.wallGroup);
-
-    this.spawnNPCs();
-    this.showLocationBanner(loc.name);
-  }
-
-  cleanupLocation() {
-    this.npcs.forEach(n => n.destroy());
-    this.npcs = [];
-    this.interactables = [];
-    this.exitZones = [];
-    this.children?.list
-      ?.filter(c => c !== this.interactPrompt && c !== this.locationBanner && c !== this.messageText)
-      .forEach(c => c.destroy());
-  }
-
-  spawnNPCs() {
-    this.npcs.forEach(n => n.destroy());
-    this.npcs = [];
-
-    const npcsHere = this.relationshipSystem.getNPCsAtLocation(this.gameState.currentLocation);
-    const spots = this.currentLocation?.npcSpots ?? [];
-
-    npcsHere.forEach((charData, i) => {
-      if (i >= spots.length) return;
-      const spot = spots[i];
-      const px = spot.x * TILE + TILE / 2;
-      const py = spot.y * TILE + TILE / 2;
-      try {
-        const npc = new NPC(this, px, py, charData.id);
-        this.npcs.push(npc);
-        if (this.player) this.physics.add.collider(this.player, npc);
-      } catch (e) {
-        console.warn('Failed to spawn NPC:', charData.name, e);
-      }
-    });
-  }
-
-  showLocationBanner(name) {
-    this.locationBanner.setText(name).setAlpha(1);
-    this.tweens.add({
-      targets: this.locationBanner,
-      alpha: 0, duration: 2000, delay: 1200, ease: 'Power2',
-    });
-  }
-
-  showMessage(text) {
-    this.messageText.setText(text).setAlpha(1);
-    this.tweens.killTweensOf(this.messageText);
-    this.tweens.add({
-      targets: this.messageText,
-      alpha: 0, duration: 1500, delay: 2000, ease: 'Power2',
-    });
-  }
-
-  handleInteract() {
-    if (this.timePaused || this.transitioning || !this.player || this.player.isInUI) return;
-
-    const px = this.player.x;
-    const py = this.player.y;
-
-    for (const exit of this.exitZones) {
-      if (Phaser.Math.Distance.Between(px, py, exit.px, exit.py) < 44) {
-        this.handleExit(exit);
-        return;
-      }
-    }
-
-    for (const npc of this.npcs) {
-      if (Phaser.Math.Distance.Between(px, py, npc.x, npc.y) < 48) {
-        this.startDialogue(npc);
-        return;
-      }
-    }
-
-    for (const obj of this.interactables) {
-      if (Phaser.Math.Distance.Between(px, py, obj.px, obj.py) < 44) {
-        this.handleObjectInteraction(obj);
-        return;
-      }
-    }
-  }
-
-  handleExit(exit) {
-    if (this.transitioning) return;
-    this.transitioning = true;
-
-    const targetLoc = getLocation(exit.target);
-    if (!targetLoc) { this.transitioning = false; return; }
-
-    const returnExit = targetLoc.exits?.find(e => e.target === this.gameState.currentLocation);
-    let spawnPos;
-    if (returnExit) {
-      const offX = returnExit.x <= 0 ? 2 : returnExit.x >= targetLoc.mapWidth - 1 ? -2 : 0;
-      const offY = returnExit.y <= 0 ? 2 : returnExit.y >= targetLoc.mapHeight - 1 ? -2 : 0;
-      spawnPos = { x: returnExit.x + (offX || 0), y: returnExit.y + (offY || 1) };
-    } else {
-      spawnPos = { x: Math.floor(targetLoc.mapWidth / 2), y: Math.floor(targetLoc.mapHeight / 2) };
-    }
-
-    this.gameState.playerPos = spawnPos;
-    SaveSystem.save(this.gameState);
-    this.cameras.main.fadeOut(200, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.loadLocation(exit.target);
-      this.cameras.main.fadeIn(200, 0, 0, 0);
-      this.transitioning = false;
-    });
-  }
-
-  startDialogue(npc) {
-    const charData = npc.getCharacterData();
-    const hearts = this.relationshipSystem.getHearts(npc.characterId);
-
-    const choice = getDialogueChoice(npc.characterId, hearts);
-
-    this.timePaused = true;
-    this.player.setInUI(true);
-
-    if (choice) {
-      this.scene.launch('DialogueScene', {
-        gameScene: this,
-        mode: 'dialogue_choice',
-        speakerName: charData.name,
-        characterId: npc.characterId,
-        choiceData: choice,
-      });
-    } else {
-      const dialogue = npc.getDialogue(hearts);
-      if (!dialogue) { this.resumeFromUI(); return; }
-      this.relationshipSystem.addHearts(npc.characterId, 0.1);
-      this.scene.launch('DialogueScene', {
-        gameScene: this,
-        mode: 'dialogue',
-        speakerName: charData.name,
-        text: dialogue,
-        characterId: npc.characterId,
-      });
-    }
-  }
-
-  handleObjectInteraction(obj) {
-    switch (obj.action) {
-      case 'read_scripts':
-      case 'work': this.openDeskMenu(); break;
-      case 'sit': this.showMessage(this._flavorText('sit')); break;
-      case 'browse': this.showMessage(this._flavorText('browse')); break;
-      default: this.showMessage(obj.label ?? 'Nothing happens.');
-    }
-  }
-
-  openDeskMenu() {
-    if (this.scene.isActive('DialogueScene')) return;
-    this.timePaused = true;
-    this.player?.setInUI(true);
-    this.scene.launch('DialogueScene', {
-      gameScene: this,
-      mode: 'desk_menu',
-    });
-  }
-
-  openInbox() {
-    if (this.scene.isActive('DialogueScene')) return;
-    this.timePaused = true;
-    this.player?.setInUI(true);
-    this.scene.launch('DialogueScene', {
-      gameScene: this,
-      mode: 'inbox',
-    });
-  }
-
-  toggleDebug() {
-    if (this.scene.isActive('DebugScene')) {
-      this.scene.stop('DebugScene');
-      if (!this.scene.isActive('DialogueScene')) {
-        this.resumeFromUI();
-      }
-    } else {
-      this.player?.setInUI(true);
-      this.scene.launch('DebugScene', { gameScene: this });
-    }
-  }
-
-  togglePauseMenu() {
-    if (this.scene.isActive('DialogueScene')) {
-      this.scene.stop('DialogueScene');
-      this.resumeFromUI();
-      return;
-    }
-    this.timePaused = true;
-    this.player?.setInUI(true);
-    this.scene.launch('DialogueScene', {
-      gameScene: this,
-      mode: 'pause',
-    });
-  }
-
-  _onNewDay() {
-    this.scriptEngine.populateInbox(Math.random() < 0.6 ? 1 : 2);
-    this.automationSystem.onNewDay();
-    this.spawnNPCs();
-    SaveSystem.save(this.gameState);
-  }
-
-  resumeFromUI() {
-    this.timePaused = false;
-    this.player?.setInUI(false);
-  }
-
-  _flavorText(action) {
-    const pool = {
-      sit: [
-        'You take a seat and enjoy a quiet moment.',
-        'The chair creaks. Amsterdam hums outside.',
-        'A moment of calm in the chaos.',
-      ],
-      browse: [
-        'Interesting reads on the shelf.',
-        'You browse but nothing catches your eye.',
-        'A well-worn copy of "Story" by Robert McKee.',
-      ],
-    };
-    const lines = pool[action] ?? ['You look around.'];
-    return lines[Math.floor(Math.random() * lines.length)];
-  }
-
-  getCoverageRating(script) {
-    const q = script.quality ?? {};
-    const avg = Object.values(q).reduce((a, b) => a + b, 0) / Math.max(Object.values(q).length, 1);
-    if (avg >= 7) return 'Recommend';
-    if (avg >= 4) return 'Consider';
-    return 'Pass';
-  }
-
-  update(time, delta) {
-    this.timeSystem.update(delta);
-
-    const speed = this.gameState.speedMultiplier ?? 1;
-    const gameMinutes = (delta / 1000) * 20 * speed;
-    this.pipelineSystem.update(gameMinutes);
-
-    if (this.player && !this.player.isInUI) {
-      const combined = {
-        left: { isDown: this.cursors.left.isDown || this.wasd.left.isDown },
-        right: { isDown: this.cursors.right.isDown || this.wasd.right.isDown },
-        up: { isDown: this.cursors.up.isDown || this.wasd.up.isDown },
-        down: { isDown: this.cursors.down.isDown || this.wasd.down.isDown },
-      };
-      this.player.update(combined);
-    }
-
-    for (const npc of this.npcs) {
-      npc.update(this.player?.x ?? 0, this.player?.y ?? 0);
-    }
-
-    this.updateInteractionPrompt();
-  }
-
-  updateInteractionPrompt() {
-    if (!this.player || this.player.isInUI) {
-      this.interactPrompt?.setVisible(false);
+    if (this.nearDesk) {
+      this._toggleCrafting();
       return;
     }
 
-    const px = this.player.x;
-    const py = this.player.y;
-    let closest = { dist: 48, text: '', x: 0, y: 0 };
+    this._tryBuyLand();
+  }
 
-    for (const exit of this.exitZones) {
-      const d = Phaser.Math.Distance.Between(px, py, exit.px, exit.py);
-      if (d < closest.dist) closest = { dist: d, text: `[SPACE] ${exit.label}`, x: exit.px, y: exit.py - 28 };
+  _tryBuyLand() {
+    for (const bi of Object.values(this.landBuyIcons)) {
+      const cx = bi.gx * LAND_TILE_SIZE + LAND_TILE_SIZE / 2;
+      const cy = bi.gy * LAND_TILE_SIZE + LAND_TILE_SIZE / 2;
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, cx, cy);
+      if (dist < LAND_TILE_SIZE / 2 + 30) {
+        this.buyLand(bi.gx, bi.gy);
+        return;
+      }
     }
-    for (const obj of this.interactables) {
-      const d = Phaser.Math.Distance.Between(px, py, obj.px, obj.py);
-      if (d < closest.dist) closest = { dist: d, text: `[SPACE] ${obj.label}`, x: obj.px, y: obj.py - 28 };
-    }
-    for (const npc of this.npcs) {
-      const d = Phaser.Math.Distance.Between(px, py, npc.x, npc.y);
-      if (d < closest.dist) closest = { dist: d, text: '[SPACE] Talk', x: npc.x, y: npc.y - 40 };
+  }
+
+  // ===== CRAFTING =====
+
+  _toggleCrafting() {
+    if (!this.nearDesk && !this.craftingOpen) return;
+    this.craftingOpen = !this.craftingOpen;
+    this.events.emit('crafting-toggled', this.craftingOpen);
+  }
+
+  craft(recipeId) {
+    const recipe = RECIPES.find(r => r.id === recipeId);
+    if (!recipe) return false;
+
+    const inv = this.gameState.inventory;
+    for (const [res, amount] of Object.entries(recipe.inputs)) {
+      if ((inv[res] ?? 0) < amount) return false;
     }
 
-    if (closest.text) {
-      this.interactPrompt.setText(closest.text).setPosition(closest.x, closest.y).setOrigin(0.5).setVisible(true);
+    for (const [res, amount] of Object.entries(recipe.inputs)) {
+      inv[res] -= amount;
+    }
+
+    const deskX = 2.5 * LAND_TILE_SIZE + DESK_OFFSET_X;
+    const deskY = 2.5 * LAND_TILE_SIZE + DESK_OFFSET_Y;
+
+    if (recipe.output.type === 'coin' && recipe.output.xp) {
+      inv.coin = (inv.coin ?? 0) + recipe.output.amount;
+      this.gameState.xp = (this.gameState.xp ?? 0) + recipe.output.xp;
+      this.gameState.totalCoins = (this.gameState.totalCoins ?? 0) + recipe.output.amount;
+      this.gameState.totalProjects = (this.gameState.totalProjects ?? 0) + 1;
+      this._checkLevelUp();
+
+      this._spawnDrop(deskX, deskY - 10, 'coin', Math.min(recipe.output.amount, 8));
+      this._showFloatingText(deskX, deskY - 30, `+${recipe.output.xp} XP`, '#E8913A');
+
+      this.cameras.main.shake(120, 0.008);
     } else {
-      this.interactPrompt.setVisible(false);
+      inv[recipe.output.type] = (inv[recipe.output.type] ?? 0) + recipe.output.amount;
+    }
+
+    this.events.emit('inventory-changed');
+    this._showFloatingText(deskX, deskY - 45, `${recipe.name}!`, '#44cc44');
+
+    this.tweens.add({
+      targets: this.desk,
+      scaleX: { from: 1.15, to: 1 },
+      scaleY: { from: 0.85, to: 1 },
+      duration: 150,
+      ease: 'Back.easeOut',
+    });
+
+    return true;
+  }
+
+  _checkLevelUp() {
+    const thresholds = [0, 20, 50, 100, 200, 350, 550, 800, 1100, 1500];
+    const xp = this.gameState.xp ?? 0;
+    let newLevel = 1;
+    for (let i = thresholds.length - 1; i >= 0; i--) {
+      if (xp >= thresholds[i]) {
+        newLevel = i + 1;
+        break;
+      }
+    }
+    if (newLevel > (this.gameState.level ?? 1)) {
+      this.gameState.level = newLevel;
+      this.events.emit('level-up', newLevel);
+      this._showFloatingText(this.player.x, this.player.y - 20, `LEVEL ${newLevel}!`, '#FFD700');
+      this.cameras.main.shake(200, 0.012);
+    }
+  }
+
+  // ===== PAUSE =====
+
+  _togglePause() {
+    if (this.craftingOpen) {
+      this.craftingOpen = false;
+      this.events.emit('crafting-toggled', false);
+      return;
+    }
+    this.events.emit('pause-toggled');
+  }
+
+  // ===== UPDATE =====
+
+  update(_time, delta) {
+    this._handleMovement(delta);
+    this._autoAttack(delta);
+    this._magnetizeDrops();
+    this._checkDeskProximity();
+
+    this.saveTimer += delta;
+    if (this.saveTimer >= 20000) {
+      this.saveTimer = 0;
+      this.gameState.playerX = this.player.x;
+      this.gameState.playerY = this.player.y;
+      SaveSystem.save(this.gameState);
+    }
+  }
+
+  _handleMovement(delta) {
+    if (this.craftingOpen) {
+      this.player.setVelocity(0, 0);
+      this.isMoving = false;
+      return;
+    }
+
+    const left = this.cursors.left.isDown || this.wasd.left.isDown;
+    const right = this.cursors.right.isDown || this.wasd.right.isDown;
+    const up = this.cursors.up.isDown || this.wasd.up.isDown;
+    const down = this.cursors.down.isDown || this.wasd.down.isDown;
+
+    let vx = 0;
+    let vy = 0;
+
+    if (left) vx = -1;
+    else if (right) vx = 1;
+    if (up) vy = -1;
+    else if (down) vy = 1;
+
+    if (vx !== 0 && vy !== 0) {
+      vx *= 0.7071;
+      vy *= 0.7071;
+    }
+
+    this.player.setVelocity(vx * PLAYER_SPEED, vy * PLAYER_SPEED);
+    this.isMoving = vx !== 0 || vy !== 0;
+
+    if (this.isMoving) {
+      let newFacing = this.facing;
+      if (Math.abs(vx) > Math.abs(vy)) {
+        newFacing = vx < 0 ? 'left' : 'right';
+      } else {
+        newFacing = vy < 0 ? 'up' : 'down';
+      }
+      if (newFacing !== this.facing) {
+        this.facing = newFacing;
+        this.player.setTexture(`player_${newFacing}`);
+      }
+
+      this.bobTimer += delta;
+      const bob = Math.sin(this.bobTimer * 0.012) * 1.5;
+      this.player.y += bob * 0.05;
+    } else {
+      this.bobTimer = 0;
+    }
+  }
+
+  _checkDeskProximity() {
+    if (!this.desk) return;
+    const dist = Phaser.Math.Distance.Between(
+      this.player.x, this.player.y, this.desk.x, this.desk.y
+    );
+    const wasNear = this.nearDesk;
+    this.nearDesk = dist < 50;
+
+    if (this.nearDesk !== wasNear) {
+      this.events.emit('desk-proximity', this.nearDesk);
+      if (!this.nearDesk && this.craftingOpen) {
+        this.craftingOpen = false;
+        this.events.emit('crafting-toggled', false);
+      }
     }
   }
 }
