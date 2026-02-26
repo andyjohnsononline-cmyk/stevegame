@@ -1,16 +1,14 @@
 import Phaser from 'phaser';
 import { SaveSystem } from '../utils/SaveSystem.js';
-import { RESOURCE_TYPES, LAND_TILE_SIZE, GRID_SIZE, WORLD_PX, getLandNodes, getLandCost } from '../data/resourceData.js';
-import { RECIPES } from '../data/craftingData.js';
+import { getStageHP, getStageCoinReward, isBossStage, getBossTimerSec, getExecName, getExecTier } from '../data/stageData.js';
+import { CREW_MEMBERS, getCrewHireCost, getCrewDPS, getTotalDPS } from '../data/crewData.js';
+import { SKILLS, isSkillActive } from '../data/skillData.js';
+import { canPrestige, getPrestigeStarPower } from '../data/prestigeData.js';
 import { SFX } from '../utils/SoundGenerator.js';
-import { getStatsForLevel, LEVEL_UPGRADES } from '../data/upgradeData.js';
-import { computeStarRating, STAR_MILESTONES } from '../data/goalData.js';
 
-const TILE = 32;
-const AUTO_ATTACK_RANGE = 36;
-const MAGNET_SPEED = 350;
-const DESK_OFFSET_X = 0;
-const DESK_OFFSET_Y = -40;
+const TAP_UPGRADE_BASE_COST = 5;
+const TAP_UPGRADE_SCALE = 1.07;
+const SAVE_INTERVAL = 15000;
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -28,451 +26,439 @@ export class GameScene extends Phaser.Scene {
       this.gameState = SaveSystem.getDefaultState();
     }
 
-    this.physics.world.setBounds(0, 0, WORLD_PX, WORLD_PX);
-
-    this.resourceNodes = [];
-    this.landTiles = {};
-    this.landBuyIcons = {};
-    this.attackCooldown = 0;
-    this.bobTimer = 0;
-    this.nearDesk = false;
-    this.craftingOpen = false;
+    this.enemyHP = 0;
+    this.enemyMaxHP = 0;
+    this.bossTimer = 0;
     this.saveTimer = 0;
-    this.autoCraftTimer = 0;
-    this.currentStars = computeStarRating(this.gameState);
+    this.dpsTickTimer = 0;
 
-    this._refreshStats();
-
-    this._buildWorld();
-    this._createPlayer();
-    this._spawnLandNodes();
-    this._setupDropGroup();
+    this._buildBackground();
+    this._spawnEnemy();
     this._setupInput();
-
-    this.cameras.main.setBounds(0, 0, WORLD_PX, WORLD_PX);
-    this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
-    this.cameras.main.setZoom(2);
 
     this.scene.launch('UIScene', { gameScene: this });
   }
 
-  _refreshStats() {
-    const s = getStatsForLevel(this.gameState.level ?? 1);
-    this.stats = s;
+  _buildBackground() {
+    this.add.image(480, 180, 'bg_office').setDepth(0);
+    this.add.rectangle(480, 500, 960, 280, 0x1a1a2e).setDepth(0);
   }
 
-  // ===== WORLD BUILDING =====
+  // ===== ENEMY =====
 
-  _buildWorld() {
-    for (let gx = 0; gx < GRID_SIZE; gx++) {
-      for (let gy = 0; gy < GRID_SIZE; gy++) {
-        const key = `${gx},${gy}`;
-        const ox = gx * LAND_TILE_SIZE;
-        const oy = gy * LAND_TILE_SIZE;
-        const unlocked = this.gameState.unlockedLands.includes(key);
+  _spawnEnemy() {
+    const stage = this.gameState.stage;
+    this.enemyMaxHP = getStageHP(stage);
+    this.enemyHP = this.enemyMaxHP;
+    this.isBoss = isBossStage(stage);
 
-        if (unlocked) {
-          this._fillLandGrass(ox, oy);
-        } else {
-          this._fillLandLocked(ox, oy);
-        }
-
-        this.landTiles[key] = { gx, gy, unlocked };
-      }
+    if (this.isBoss) {
+      this.bossTimer = getBossTimerSec() * 1000;
+    } else {
+      this.bossTimer = 0;
     }
 
-    this._updateBuyIcons();
+    const tier = Math.min(getExecTier(stage), 4);
+    const texKey = this.isBoss ? `exec_${tier}_boss` : `exec_${tier}`;
+    const name = getExecName(stage);
 
-    const cx = 2.5 * LAND_TILE_SIZE;
-    const cy = 2.5 * LAND_TILE_SIZE;
-    this.desk = this.physics.add.staticImage(cx + DESK_OFFSET_X, cy + DESK_OFFSET_Y, 'desk').setDepth(3);
-    this.desk.body.setSize(48, 20);
-    this.desk.body.setOffset(0, 10);
-  }
-
-  _fillLandGrass(ox, oy) {
-    for (let x = ox; x < ox + LAND_TILE_SIZE; x += TILE) {
-      for (let y = oy; y < oy + LAND_TILE_SIZE; y += TILE) {
-        const variant = ((x / TILE + y / TILE) % 3 === 0) ? 'tile_grass_alt' : 'tile_grass';
-        this.add.image(x + TILE / 2, y + TILE / 2, variant).setDepth(0);
-      }
+    if (this.enemySprite) {
+      this.enemySprite.destroy();
+    }
+    if (this.enemyNameText) {
+      this.enemyNameText.destroy();
     }
 
-    const numFlowers = 2 + (((ox + oy) * 7) % 3);
-    for (let i = 0; i < numFlowers; i++) {
-      const fx = ox + 30 + ((i * 97 + ox) % (LAND_TILE_SIZE - 60));
-      const fy = oy + 30 + ((i * 71 + oy) % (LAND_TILE_SIZE - 60));
-      this.add.image(fx, fy, 'deco_flower').setDepth(1).setAlpha(0.7);
-    }
-  }
+    this.enemySprite = this.add.image(480, 220, texKey)
+      .setDepth(3)
+      .setScale(this.isBoss ? 2.5 : 2)
+      .setInteractive({ useHandCursor: true });
 
-  _fillLandLocked(ox, oy) {
-    for (let x = ox; x < ox + LAND_TILE_SIZE; x += TILE) {
-      for (let y = oy; y < oy + LAND_TILE_SIZE; y += TILE) {
-        this.add.image(x + TILE / 2, y + TILE / 2, 'land_locked').setDepth(0);
-      }
-    }
-  }
+    this.enemyNameText = this.add.text(480, 310, name, {
+      fontSize: '11px',
+      fontFamily: 'monospace',
+      color: this.isBoss ? '#FFD700' : '#F5E6CC',
+      stroke: '#000000',
+      strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(4);
 
-  _updateBuyIcons() {
-    for (const k of Object.keys(this.landBuyIcons)) {
-      this.landBuyIcons[k].icon?.destroy();
-      this.landBuyIcons[k].text?.destroy();
-      this.landBuyIcons[k].glow?.destroy();
-      delete this.landBuyIcons[k];
-    }
-
-    for (let gx = 0; gx < GRID_SIZE; gx++) {
-      for (let gy = 0; gy < GRID_SIZE; gy++) {
-        const key = `${gx},${gy}`;
-        if (this.gameState.unlockedLands.includes(key)) continue;
-        if (!this._isAdjacentToUnlocked(gx, gy)) continue;
-
-        const cx = gx * LAND_TILE_SIZE + LAND_TILE_SIZE / 2;
-        const cy = gy * LAND_TILE_SIZE + LAND_TILE_SIZE / 2;
-        const cost = getLandCost(this.gameState.landsPurchased);
-
-        const icon = this.add.image(cx, cy - 10, 'land_buy_icon').setDepth(8).setAlpha(0.85);
-        const text = this.add.text(cx, cy + 18, `${cost}`, {
-          fontSize: '10px', fontFamily: 'monospace', color: '#FFD700',
-          stroke: '#000000', strokeThickness: 3,
-        }).setOrigin(0.5).setDepth(8);
-
+    const targetScale = this.isBoss ? 2.5 : 2;
+    this.tweens.add({
+      targets: this.enemySprite,
+      scaleX: { from: 0, to: targetScale },
+      scaleY: { from: 0, to: targetScale },
+      duration: 300,
+      ease: 'Back.easeOut',
+      onComplete: () => {
         this.tweens.add({
-          targets: [icon],
-          scaleX: { from: 0.9, to: 1.1 },
-          scaleY: { from: 0.9, to: 1.1 },
+          targets: this.enemySprite,
+          y: { from: 218, to: 222 },
           duration: 1200,
           yoyo: true,
           repeat: -1,
           ease: 'Sine.easeInOut',
         });
-
-        this.landBuyIcons[key] = { icon, text, gx, gy, cost };
-      }
-    }
-  }
-
-  _isAdjacentToUnlocked(gx, gy) {
-    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-    for (const [dx, dy] of dirs) {
-      const nk = `${gx + dx},${gy + dy}`;
-      if (this.gameState.unlockedLands.includes(nk)) return true;
-    }
-    return false;
-  }
-
-  buyLand(gx, gy) {
-    const key = `${gx},${gy}`;
-    if (this.gameState.unlockedLands.includes(key)) return false;
-
-    const cost = getLandCost(this.gameState.landsPurchased);
-    if ((this.gameState.inventory.coin ?? 0) < cost) return false;
-
-    this.gameState.inventory.coin -= cost;
-    this.gameState.unlockedLands.push(key);
-    this.gameState.landsPurchased++;
-    this.events.emit('inventory-changed');
-
-    const ox = gx * LAND_TILE_SIZE;
-    const oy = gy * LAND_TILE_SIZE;
-    this._fillLandGrass(ox, oy);
-
-    const nodes = getLandNodes(gx, gy);
-    for (const n of nodes) {
-      this._spawnNode(n.type, n.x, n.y);
-    }
-
-    this._updateBuyIcons();
-    this.cameras.main.shake(200, 0.01);
-    SFX.buyLand();
-
-    this._showFloatingText(
-      ox + LAND_TILE_SIZE / 2, oy + LAND_TILE_SIZE / 2,
-      'NEW LAND!', '#44ff44'
-    );
-
-    this._checkMilestones();
-    return true;
-  }
-
-  // ===== PLAYER =====
-
-  _createPlayer() {
-    const px = this.gameState.playerX;
-    const py = this.gameState.playerY;
-    this.player = this.physics.add.sprite(px, py, 'player_down').setDepth(5);
-    this.player.setCollideWorldBounds(true);
-    this.player.body.setSize(10, 10);
-    this.player.body.setOffset(3, 6);
-    this.facing = 'down';
-    this.isMoving = false;
-  }
-
-  // ===== RESOURCE NODES =====
-
-  _spawnLandNodes() {
-    for (const landKey of this.gameState.unlockedLands) {
-      const [gx, gy] = landKey.split(',').map(Number);
-      const nodes = getLandNodes(gx, gy);
-      for (const n of nodes) {
-        this._spawnNode(n.type, n.x, n.y);
-      }
-    }
-  }
-
-  _spawnNode(type, x, y) {
-    const rtype = RESOURCE_TYPES[type];
-    if (!rtype || !rtype.nodeTexture) return;
-
-    const node = this.physics.add.staticImage(x, y, rtype.nodeTexture).setDepth(3);
-    node.resourceType = rtype;
-    node.hp = rtype.hitsToBreak;
-    node.maxHp = rtype.hitsToBreak;
-    node.depleted = false;
-    this.resourceNodes.push(node);
-  }
-
-  // ===== DROPS =====
-
-  _setupDropGroup() {
-    this.drops = this.physics.add.group();
-  }
-
-  _spawnDrop(x, y, resourceId, count) {
-    const n = count ?? 1;
-    for (let i = 0; i < n; i++) {
-      this.time.delayedCall(i * 60, () => this._spawnSingleDrop(x, y, resourceId));
-    }
-  }
-
-  _spawnSingleDrop(x, y, resourceId) {
-    const rtype = RESOURCE_TYPES[resourceId];
-    if (!rtype) return;
-
-    const drop = this.physics.add.sprite(x, y, rtype.dropTexture).setDepth(4);
-    drop.setData('resourceId', resourceId);
-    drop.setData('collectible', false);
-    drop.setData('magnetized', false);
-
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 60 + Math.random() * 50;
-    drop.setVelocity(
-      Math.cos(angle) * speed,
-      Math.sin(angle) * speed - 100
-    );
-    drop.setBounce(0.4);
-    drop.setDrag(200);
-
-    this.drops.add(drop);
-
-    this.tweens.add({
-      targets: drop,
-      scaleX: { from: 0, to: 1.3 },
-      scaleY: { from: 0, to: 1.3 },
-      duration: 150,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        this.tweens.add({
-          targets: drop,
-          scaleX: 1, scaleY: 1,
-          duration: 100,
-        });
       },
     });
 
-    this.time.delayedCall(350, () => {
-      if (drop.active) {
-        drop.setData('collectible', true);
-        drop.setVelocity(0, 0);
-        drop.setDrag(0);
-        this.tweens.add({
-          targets: drop,
-          y: drop.y - 3,
-          duration: 600,
-          yoyo: true,
-          repeat: -1,
-          ease: 'Sine.easeInOut',
-        });
+    if (this.isBoss) {
+      this.cameras.main.flash(300, 255, 50, 50, false);
+      this._showFloatingText(480, 160, 'BOSS FIGHT!', '#FF4444');
+    }
+
+    this.events.emit('enemy-changed');
+  }
+
+  // ===== INPUT =====
+
+  _setupInput() {
+    this.input.on('pointerdown', (pointer) => {
+      if (pointer.y < 360) {
+        this._onTap(pointer.x, pointer.y);
       }
     });
   }
 
-  _collectDrop(drop) {
-    const resourceId = drop.getData('resourceId');
-    if (!resourceId) return;
+  _onTap(x, y) {
+    if (this.enemyHP <= 0) return;
 
-    drop.setData('collectible', false);
+    const starPower = this.gameState.prestige?.starPower ?? 1;
+    let damage = this.gameState.tapDamage * starPower;
 
-    const pitchMap = { script: 0, idea: 1, coffee: 2, contact: 3, coin: 4, pitch: 5, project: 6, xp_orb: 7 };
-    SFX.collect(pitchMap[resourceId] ?? 0);
+    const now = Date.now();
+    const skills = this.gameState.skills;
 
-    if (resourceId === 'xp_orb') {
-      this.gameState.xp = (this.gameState.xp ?? 0) + 1;
-      this._checkLevelUp();
-    } else {
-      this.gameState.inventory[resourceId] = (this.gameState.inventory[resourceId] ?? 0) + 1;
+    const viralState = skills.viralMarketing;
+    const viralDef = SKILLS.find(s => s.id === 'viralMarketing');
+    if (viralDef && isSkillActive(viralState, now)) {
+      damage *= viralDef.effect.tapMultiplier;
     }
-    this.events.emit('inventory-changed');
 
-    this.tweens.killTweensOf(drop);
+    const powerState = skills.powerPitch;
+    const powerDef = SKILLS.find(s => s.id === 'powerPitch');
+    if (powerDef && isSkillActive(powerState, now)) {
+      damage *= powerDef.effect.critMultiplier;
+    }
+
+    this._dealDamage(damage, x, y);
+    SFX.tap();
+  }
+
+  _dealDamage(damage, x, y) {
+    const actual = Math.min(damage, this.enemyHP);
+    this.enemyHP -= actual;
+
+    this._showDamageNumber(x, y, damage);
+    this._hitEffect();
+
+    this.events.emit('hp-changed', this.enemyHP, this.enemyMaxHP);
+
+    if (this.enemyHP <= 0) {
+      this._onEnemyKilled();
+    }
+  }
+
+  _hitEffect() {
+    if (!this.enemySprite) return;
     this.tweens.add({
-      targets: drop,
-      scaleX: 1.5, scaleY: 1.5,
-      alpha: 0,
-      duration: 150,
+      targets: this.enemySprite,
+      scaleX: this.enemySprite.scaleX * 0.9,
+      scaleY: this.enemySprite.scaleY * 1.1,
+      duration: 50,
+      yoyo: true,
+      ease: 'Sine.easeOut',
+    });
+
+    this.enemySprite.setTint(0xff4444);
+    this.time.delayedCall(60, () => {
+      if (this.enemySprite?.active) this.enemySprite.clearTint();
+    });
+  }
+
+  _showDamageNumber(x, y, amount) {
+    const text = formatNumber(Math.floor(amount));
+    const ft = this.add.text(x + Phaser.Math.Between(-20, 20), y - 10, text, {
+      fontSize: amount > this.gameState.tapDamage * 2 ? '14px' : '10px',
+      fontFamily: 'monospace',
+      color: amount > this.gameState.tapDamage * 2 ? '#FF4444' : '#FFFFFF',
+      stroke: '#000000',
+      strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(10);
+
+    this.tweens.add({
+      targets: ft,
+      y: ft.y - 40,
+      alpha: { from: 1, to: 0 },
+      duration: 600,
       ease: 'Power2',
-      onComplete: () => drop.destroy(),
+      onComplete: () => ft.destroy(),
     });
   }
 
-  _magnetizeDrops() {
-    const px = this.player.x;
-    const py = this.player.y;
+  _onEnemyKilled() {
+    const stage = this.gameState.stage;
+    const coins = getStageCoinReward(stage);
+    const starPower = this.gameState.prestige?.starPower ?? 1;
+    const totalReward = Math.floor(coins * starPower);
 
-    this.drops.getChildren().forEach((drop) => {
-      if (!drop.active || !drop.getData('collectible')) return;
+    this.gameState.coins += totalReward;
+    this.gameState.totalCoins += totalReward;
 
-      const dist = Phaser.Math.Distance.Between(px, py, drop.x, drop.y);
+    this._spawnCoinParticles(480, 220, Math.min(totalReward, 12));
+    this._showFloatingText(480, 180, `+${formatNumber(totalReward)} coins`, '#FFD700');
 
-      if (dist < 16) {
-        this._collectDrop(drop);
-        return;
-      }
-
-      if (dist < this.stats.magnetRange) {
-        const angle = Math.atan2(py - drop.y, px - drop.x);
-        const speed = MAGNET_SPEED * (1 - dist / this.stats.magnetRange) + 100;
-        drop.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-        drop.setData('magnetized', true);
-      }
-    });
-  }
-
-  // ===== AUTO ATTACK =====
-
-  _autoAttack(delta) {
-    this.attackCooldown -= delta;
-    if (this.attackCooldown > 0) return;
-    if (this.craftingOpen) return;
-
-    const targets = [];
-    for (const node of this.resourceNodes) {
-      if (node.depleted) continue;
-      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, node.x, node.y);
-      if (dist < AUTO_ATTACK_RANGE) {
-        targets.push({ node, dist });
-      }
-    }
-
-    if (targets.length === 0) return;
-
-    targets.sort((a, b) => a.dist - b.dist);
-    const hitCount = Math.min(targets.length, this.stats.multiHit);
-
-    this.attackCooldown = this.stats.attackCooldown;
-    for (let i = 0; i < hitCount; i++) {
-      this._hitNode(targets[i].node);
-    }
-  }
-
-  _hitNode(node) {
-    node.hp--;
-
-    this.tweens.add({
-      targets: node,
-      scaleX: { from: 1.3, to: 1 },
-      scaleY: { from: 0.7, to: 1 },
-      duration: 120,
-      ease: 'Back.easeOut',
-    });
-
-    this.tweens.add({
-      targets: this.player,
-      scaleX: { from: 1.2, to: 1 },
-      scaleY: { from: 0.85, to: 1 },
-      duration: 100,
-      ease: 'Back.easeOut',
-    });
-
-    this._spawnHitParticles(node.x, node.y);
-
-    if (node.hp <= 0) {
-      this._breakNode(node);
+    if (this.isBoss) {
+      SFX.bossKill();
+      this.cameras.main.shake(300, 0.015);
     } else {
-      SFX.hit();
+      SFX.kill();
+      this.cameras.main.shake(100, 0.006);
     }
-  }
 
-  _breakNode(node) {
-    const rtype = node.resourceType;
-    node.depleted = true;
-    node.setTexture(rtype.nodeTexture + '_depleted');
-    node.setAlpha(0.4);
-
-    this.cameras.main.shake(80, 0.006);
-    SFX.breakNode();
-
-    const dropCount = Phaser.Math.Between(rtype.dropMin, rtype.dropMax) + this.stats.dropBonus;
-    this._spawnDrop(node.x, node.y, rtype.id, dropCount);
-
-    if (rtype.gatherXP) {
-      for (let i = 0; i < rtype.gatherXP; i++) {
-        this.time.delayedCall(dropCount * 60 + i * 80, () => {
-          this._spawnSingleDrop(node.x, node.y, 'xp_orb');
-        });
+    this._killAnimation(() => {
+      this.gameState.stage++;
+      if (this.gameState.stage > this.gameState.maxStage) {
+        this.gameState.maxStage = this.gameState.stage;
       }
-    }
-
-    this._spawnBreakParticles(node.x, node.y);
-
-    this.time.delayedCall(rtype.respawnTime, () => {
-      if (!node.active) return;
-      node.depleted = false;
-      node.hp = node.maxHp;
-      node.setTexture(rtype.nodeTexture);
-      node.setAlpha(1);
-      this.tweens.add({
-        targets: node,
-        scaleX: { from: 0, to: 1 },
-        scaleY: { from: 0, to: 1 },
-        duration: 300,
-        ease: 'Back.easeOut',
-      });
+      this.events.emit('coins-changed');
+      this._spawnEnemy();
     });
   }
 
-  _spawnHitParticles(x, y) {
-    for (let i = 0; i < 3; i++) {
-      const p = this.add.image(x, y, 'particle_hit').setDepth(9).setScale(0.5);
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 10 + Math.random() * 15;
+  _killAnimation(onComplete) {
+    if (!this.enemySprite) { onComplete(); return; }
+
+    this._spawnBreakParticles(this.enemySprite.x, this.enemySprite.y);
+
+    if (this.isBoss) {
+      this._spawnStarParticles(this.enemySprite.x, this.enemySprite.y);
+    }
+
+    this.tweens.killTweensOf(this.enemySprite);
+    this.tweens.add({
+      targets: [this.enemySprite, this.enemyNameText],
+      alpha: 0,
+      scaleX: 0,
+      scaleY: 0,
+      angle: { from: 0, to: this.isBoss ? 360 : 0 },
+      duration: this.isBoss ? 500 : 250,
+      ease: 'Power3',
+      onComplete,
+    });
+  }
+
+  _spawnStarParticles(x, y) {
+    for (let i = 0; i < 12; i++) {
+      const p = this.add.image(x, y, 'particle_star').setDepth(9);
+      const angle = (i / 12) * Math.PI * 2;
+      const dist = 40 + Math.random() * 60;
       this.tweens.add({
         targets: p,
         x: x + Math.cos(angle) * dist,
-        y: y + Math.sin(angle) * dist,
-        alpha: 0,
-        scaleX: 0,
-        scaleY: 0,
-        duration: 250 + Math.random() * 100,
+        y: y + Math.sin(angle) * dist - 30,
+        alpha: { from: 1, to: 0 },
+        scaleX: { from: 2, to: 0 },
+        scaleY: { from: 2, to: 0 },
+        duration: 600 + Math.random() * 300,
         ease: 'Power2',
         onComplete: () => p.destroy(),
       });
     }
   }
 
-  _spawnBreakParticles(x, y) {
-    for (let i = 0; i < 6; i++) {
-      const p = this.add.image(x, y, 'particle_spark').setDepth(9);
-      const angle = (i / 6) * Math.PI * 2;
-      const dist = 15 + Math.random() * 20;
+  _onBossTimeout() {
+    this.gameState.stage = Math.max(1, this.gameState.stage - 1);
+    SFX.bossFail();
+    this._showFloatingText(480, 200, 'TIME UP!', '#FF4444');
+    this.cameras.main.shake(200, 0.01);
+
+    this.time.delayedCall(500, () => {
+      this._spawnEnemy();
+    });
+  }
+
+  // ===== PASSIVE DPS =====
+
+  _applyDPS(delta) {
+    const starPower = this.gameState.prestige?.starPower ?? 1;
+    let dps = getTotalDPS(this.gameState.crew, starPower);
+
+    const now = Date.now();
+    const coffeeState = this.gameState.skills.coffeeRush;
+    const coffeeDef = SKILLS.find(s => s.id === 'coffeeRush');
+    if (coffeeDef && isSkillActive(coffeeState, now)) {
+      dps *= coffeeDef.effect.dpsMultiplier;
+    }
+
+    if (dps <= 0) return;
+
+    const damage = dps * (delta / 1000);
+    if (damage > 0 && this.enemyHP > 0) {
+      this.enemyHP -= damage;
+      this.events.emit('hp-changed', this.enemyHP, this.enemyMaxHP);
+
+      this.dpsTickTimer += delta;
+      if (this.dpsTickTimer >= 500) {
+        this.dpsTickTimer = 0;
+        const tickDmg = dps * 0.5;
+        const dx = Phaser.Math.Between(-40, 40);
+        this._showDPSNumber(480 + dx, 250, tickDmg);
+      }
+
+      if (this.enemyHP <= 0) {
+        this.enemyHP = 0;
+        this._onEnemyKilled();
+      }
+    }
+  }
+
+  _showDPSNumber(x, y, amount) {
+    const ft = this.add.text(x, y, formatNumber(Math.floor(amount)), {
+      fontSize: '8px',
+      fontFamily: 'monospace',
+      color: '#88CCFF',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(9);
+
+    this.tweens.add({
+      targets: ft,
+      y: y - 25,
+      alpha: { from: 0.8, to: 0 },
+      duration: 500,
+      ease: 'Power2',
+      onComplete: () => ft.destroy(),
+    });
+  }
+
+  // ===== SKILLS =====
+
+  activateSkill(skillId) {
+    const skillDef = SKILLS.find(s => s.id === skillId);
+    if (!skillDef) return false;
+
+    const state = this.gameState.skills[skillId];
+    const now = Date.now();
+
+    if (state?.lastUsed && (now - state.lastUsed) < skillDef.cooldownSec * 1000) {
+      return false;
+    }
+
+    this.gameState.skills[skillId] = { id: skillId, lastUsed: now };
+    SFX.skill();
+
+    if (skillDef.effect.instantDPS) {
+      const starPower = this.gameState.prestige?.starPower ?? 1;
+      const dps = getTotalDPS(this.gameState.crew, starPower);
+      const damage = dps * skillDef.effect.instantDPS;
+      if (damage > 0 && this.enemyHP > 0) {
+        this._dealDamage(damage, 480, 220);
+      }
+    }
+
+    this.events.emit('skill-activated', skillId);
+    return true;
+  }
+
+  // ===== UPGRADES =====
+
+  getTapUpgradeCost() {
+    return Math.floor(TAP_UPGRADE_BASE_COST * Math.pow(TAP_UPGRADE_SCALE, this.gameState.tapLevel - 1));
+  }
+
+  upgradeTap() {
+    const cost = this.getTapUpgradeCost();
+    if (this.gameState.coins < cost) return false;
+
+    this.gameState.coins -= cost;
+    this.gameState.tapLevel++;
+    this.gameState.tapDamage = this.gameState.tapLevel;
+    this.events.emit('coins-changed');
+    SFX.hire();
+    return true;
+  }
+
+  hireCrew(crewId) {
+    const def = CREW_MEMBERS.find(c => c.id === crewId);
+    if (!def) return false;
+
+    const state = this.gameState.crew.find(c => c.id === crewId);
+    if (!state) return false;
+
+    if (this.gameState.maxStage < def.unlockStage) return false;
+
+    const cost = getCrewHireCost(def, state.level);
+    if (this.gameState.coins < cost) return false;
+
+    this.gameState.coins -= cost;
+    state.level++;
+    this.events.emit('coins-changed');
+    SFX.hire();
+    return true;
+  }
+
+  // ===== PRESTIGE =====
+
+  doPrestige() {
+    if (!canPrestige(this.gameState.maxStage)) return false;
+
+    const earned = getPrestigeStarPower(this.gameState.maxStage);
+    if (earned <= 0) return false;
+
+    SFX.prestige();
+
+    this.gameState.prestige.count++;
+    this.gameState.prestige.starPower += earned;
+    this.gameState.prestige.totalStarPower += earned;
+
+    this.gameState.stage = 1;
+    this.gameState.maxStage = 1;
+    this.gameState.coins = 0;
+    this.gameState.tapLevel = 1;
+    this.gameState.tapDamage = 1;
+    for (const c of this.gameState.crew) {
+      c.level = 0;
+    }
+
+    this.cameras.main.flash(800, 200, 150, 255);
+    this.events.emit('coins-changed');
+    this._spawnEnemy();
+    return true;
+  }
+
+  // ===== PARTICLES & EFFECTS =====
+
+  _spawnCoinParticles(x, y, count) {
+    for (let i = 0; i < count; i++) {
+      const p = this.add.image(x, y, 'particle_coin').setDepth(9);
+      const angle = (i / count) * Math.PI * 2;
+      const dist = 30 + Math.random() * 40;
       this.tweens.add({
         targets: p,
         x: x + Math.cos(angle) * dist,
-        y: y + Math.sin(angle) * dist - 10,
+        y: y + Math.sin(angle) * dist - 20,
         alpha: 0,
-        scaleX: { from: 1, to: 0 },
-        scaleY: { from: 1, to: 0 },
+        scaleX: { from: 2, to: 0 },
+        scaleY: { from: 2, to: 0 },
+        duration: 400 + Math.random() * 200,
+        ease: 'Power3',
+        onComplete: () => p.destroy(),
+      });
+    }
+  }
+
+  _spawnBreakParticles(x, y) {
+    for (let i = 0; i < 8; i++) {
+      const p = this.add.image(x, y, 'particle_spark').setDepth(9);
+      const angle = (i / 8) * Math.PI * 2;
+      const dist = 20 + Math.random() * 30;
+      this.tweens.add({
+        targets: p,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist - 15,
+        alpha: 0,
+        scaleX: { from: 1.5, to: 0 },
+        scaleY: { from: 1.5, to: 0 },
         duration: 350 + Math.random() * 150,
         ease: 'Power3',
         onComplete: () => p.destroy(),
@@ -482,267 +468,50 @@ export class GameScene extends Phaser.Scene {
 
   _showFloatingText(x, y, text, color) {
     const ft = this.add.text(x, y, text, {
-      fontSize: '8px', fontFamily: 'monospace', color,
-      stroke: '#000000', strokeThickness: 2,
+      fontSize: '12px',
+      fontFamily: 'monospace',
+      color,
+      stroke: '#000000',
+      strokeThickness: 3,
     }).setOrigin(0.5).setDepth(10);
 
     this.tweens.add({
       targets: ft,
-      y: y - 25,
+      y: y - 35,
       alpha: { from: 1, to: 0 },
-      duration: 800,
+      duration: 900,
       ease: 'Power2',
       onComplete: () => ft.destroy(),
     });
   }
 
-  // ===== INPUT =====
-
-  _setupInput() {
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.wasd = {
-      up: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-      down: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-      left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-      right: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-    };
-
-    this.eKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.escKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-
-    this.eKey.on('down', () => this._toggleCrafting());
-    this.escKey.on('down', () => this._togglePause());
-    this.spaceKey.on('down', () => this._onSpace());
-  }
-
-  _onSpace() {
-    if (this.craftingOpen) return;
-
-    if (this.nearDesk) {
-      this._toggleCrafting();
-      return;
-    }
-
-    this._tryBuyLand();
-  }
-
-  _tryBuyLand() {
-    for (const bi of Object.values(this.landBuyIcons)) {
-      const cx = bi.gx * LAND_TILE_SIZE + LAND_TILE_SIZE / 2;
-      const cy = bi.gy * LAND_TILE_SIZE + LAND_TILE_SIZE / 2;
-      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, cx, cy);
-      if (dist < LAND_TILE_SIZE / 2 + 30) {
-        this.buyLand(bi.gx, bi.gy);
-        return;
-      }
-    }
-  }
-
-  // ===== CRAFTING =====
-
-  _toggleCrafting() {
-    if (!this.nearDesk && !this.craftingOpen) return;
-    this.craftingOpen = !this.craftingOpen;
-    this.events.emit('crafting-toggled', this.craftingOpen);
-  }
-
-  craft(recipeId) {
-    const recipe = RECIPES.find(r => r.id === recipeId);
-    if (!recipe) return false;
-
-    const inv = this.gameState.inventory;
-    for (const [res, amount] of Object.entries(recipe.inputs)) {
-      if ((inv[res] ?? 0) < amount) return false;
-    }
-
-    for (const [res, amount] of Object.entries(recipe.inputs)) {
-      inv[res] -= amount;
-    }
-
-    const deskX = 2.5 * LAND_TILE_SIZE + DESK_OFFSET_X;
-    const deskY = 2.5 * LAND_TILE_SIZE + DESK_OFFSET_Y;
-
-    if (recipe.output.type === 'coin' && recipe.output.xp) {
-      const levelBonus = (this.gameState.level ?? 1) - 1;
-      const coinAmount = recipe.output.amount + levelBonus;
-      const xpAmount = recipe.output.xp + Math.floor(levelBonus / 2);
-
-      inv.coin = (inv.coin ?? 0) + coinAmount;
-      this.gameState.xp = (this.gameState.xp ?? 0) + xpAmount;
-      this.gameState.totalCoins = (this.gameState.totalCoins ?? 0) + coinAmount;
-      this.gameState.totalProjects = (this.gameState.totalProjects ?? 0) + 1;
-      this._checkLevelUp();
-
-      this._spawnDrop(deskX, deskY - 10, 'coin', Math.min(coinAmount, 8));
-      this._showFloatingText(deskX, deskY - 30, `+${xpAmount} XP`, '#E8913A');
-
-      this.cameras.main.shake(120, 0.008);
-      this._checkMilestones();
-    } else {
-      inv[recipe.output.type] = (inv[recipe.output.type] ?? 0) + recipe.output.amount;
-    }
-
-    this.events.emit('inventory-changed');
-    this._showFloatingText(deskX, deskY - 45, `${recipe.name}!`, '#44cc44');
-    SFX.craft();
-
-    this.tweens.add({
-      targets: this.desk,
-      scaleX: { from: 1.15, to: 1 },
-      scaleY: { from: 0.85, to: 1 },
-      duration: 150,
-      ease: 'Back.easeOut',
-    });
-
-    return true;
-  }
-
-  _checkLevelUp() {
-    const thresholds = [0, 20, 50, 100, 200, 350, 550, 800, 1100, 1500];
-    const xp = this.gameState.xp ?? 0;
-    let newLevel = 1;
-    for (let i = thresholds.length - 1; i >= 0; i--) {
-      if (xp >= thresholds[i]) {
-        newLevel = i + 1;
-        break;
-      }
-    }
-    if (newLevel > (this.gameState.level ?? 1)) {
-      this.gameState.level = newLevel;
-      this._refreshStats();
-      const upgrade = LEVEL_UPGRADES[newLevel];
-      this.events.emit('level-up', newLevel, upgrade?.label);
-      this._showFloatingText(this.player.x, this.player.y - 20, `LEVEL ${newLevel}!`, '#FFD700');
-      if (upgrade?.label) {
-        this._showFloatingText(this.player.x, this.player.y - 35, upgrade.label, '#44ff44');
-      }
-      this.cameras.main.shake(200, 0.012);
-      SFX.levelUp();
-    }
-  }
-
-  _checkMilestones() {
-    const newStars = computeStarRating(this.gameState);
-    if (newStars > this.currentStars) {
-      const milestone = STAR_MILESTONES.find(m => m.star === newStars);
-      this.currentStars = newStars;
-      this.events.emit('star-earned', newStars, milestone?.label);
-      this._showFloatingText(this.player.x, this.player.y - 45, `${milestone?.label ?? 'New Star'}!`, '#FFD700');
-      this.cameras.main.shake(300, 0.015);
-      SFX.levelUp();
-    }
-  }
-
-  // ===== PAUSE =====
-
-  _togglePause() {
-    if (this.craftingOpen) {
-      this.craftingOpen = false;
-      this.events.emit('crafting-toggled', false);
-      return;
-    }
-    this.events.emit('pause-toggled');
-  }
-
   // ===== UPDATE =====
 
   update(_time, delta) {
-    this._handleMovement(delta);
-    this._autoAttack(delta);
-    this._magnetizeDrops();
-    this._checkDeskProximity();
-    this._autoCraft(delta);
+    this._applyDPS(delta);
+
+    if (this.isBoss && this.enemyHP > 0) {
+      this.bossTimer -= delta;
+      this.events.emit('boss-timer', this.bossTimer, getBossTimerSec() * 1000);
+      if (this.bossTimer <= 0) {
+        this._onBossTimeout();
+      }
+    }
 
     this.saveTimer += delta;
-    if (this.saveTimer >= 20000) {
+    if (this.saveTimer >= SAVE_INTERVAL) {
       this.saveTimer = 0;
-      this.gameState.playerX = this.player.x;
-      this.gameState.playerY = this.player.y;
       SaveSystem.save(this.gameState);
     }
   }
-
-  _handleMovement(delta) {
-    if (this.craftingOpen) {
-      this.player.setVelocity(0, 0);
-      this.isMoving = false;
-      return;
-    }
-
-    const left = this.cursors.left.isDown || this.wasd.left.isDown;
-    const right = this.cursors.right.isDown || this.wasd.right.isDown;
-    const up = this.cursors.up.isDown || this.wasd.up.isDown;
-    const down = this.cursors.down.isDown || this.wasd.down.isDown;
-
-    let vx = 0;
-    let vy = 0;
-
-    if (left) vx = -1;
-    else if (right) vx = 1;
-    if (up) vy = -1;
-    else if (down) vy = 1;
-
-    if (vx !== 0 && vy !== 0) {
-      vx *= 0.7071;
-      vy *= 0.7071;
-    }
-
-    this.player.setVelocity(vx * this.stats.moveSpeed, vy * this.stats.moveSpeed);
-    this.isMoving = vx !== 0 || vy !== 0;
-
-    if (this.isMoving) {
-      let newFacing = this.facing;
-      if (Math.abs(vx) > Math.abs(vy)) {
-        newFacing = vx < 0 ? 'left' : 'right';
-      } else {
-        newFacing = vy < 0 ? 'up' : 'down';
-      }
-      if (newFacing !== this.facing) {
-        this.facing = newFacing;
-        this.player.setTexture(`player_${newFacing}`);
-      }
-
-      this.bobTimer += delta;
-      const bob = Math.sin(this.bobTimer * 0.012) * 1.5;
-      this.player.y += bob * 0.05;
-    } else {
-      this.bobTimer = 0;
-    }
-  }
-
-  _autoCraft(delta) {
-    if (!this.stats.autoCraft || !this.nearDesk) return;
-    this.autoCraftTimer += delta;
-    if (this.autoCraftTimer < 1500) return;
-    this.autoCraftTimer = 0;
-
-    for (const recipe of RECIPES) {
-      const inv = this.gameState.inventory;
-      const canCraft = Object.entries(recipe.inputs).every(
-        ([res, amount]) => (inv[res] ?? 0) >= amount
-      );
-      if (canCraft) {
-        this.craft(recipe.id);
-        return;
-      }
-    }
-  }
-
-  _checkDeskProximity() {
-    if (!this.desk) return;
-    const dist = Phaser.Math.Distance.Between(
-      this.player.x, this.player.y, this.desk.x, this.desk.y
-    );
-    const wasNear = this.nearDesk;
-    this.nearDesk = dist < 50;
-
-    if (this.nearDesk !== wasNear) {
-      this.events.emit('desk-proximity', this.nearDesk);
-      if (!this.nearDesk && this.craftingOpen) {
-        this.craftingOpen = false;
-        this.events.emit('crafting-toggled', false);
-      }
-    }
-  }
 }
+
+function formatNumber(n) {
+  if (n < 1000) return Math.floor(n).toString();
+  if (n < 1e6) return (n / 1000).toFixed(1) + 'K';
+  if (n < 1e9) return (n / 1e6).toFixed(1) + 'M';
+  if (n < 1e12) return (n / 1e9).toFixed(1) + 'B';
+  return (n / 1e12).toFixed(1) + 'T';
+}
+
+export { formatNumber };

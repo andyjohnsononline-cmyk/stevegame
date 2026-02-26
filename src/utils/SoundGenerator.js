@@ -44,15 +44,41 @@ function noise(duration, volume = 0.08) {
 }
 
 export const SFX = {
+  tap() {
+    playTone(300 + Math.random() * 100, 0.06, 'square', 0.08);
+  },
+
   hit() {
     playTone(120, 0.08, 'square', 0.12);
     noise(0.05, 0.06);
   },
 
-  breakNode() {
-    playTone(80, 0.15, 'square', 0.14);
-    playTone(60, 0.2, 'sawtooth', 0.06);
-    noise(0.12, 0.1);
+  kill() {
+    playTone(400, 0.1, 'square', 0.12);
+    playTone(600, 0.15, 'square', 0.08);
+    noise(0.1, 0.08);
+  },
+
+  bossKill() {
+    const ac = getCtx();
+    const t = ac.currentTime;
+    [523, 659, 784, 1047].forEach((freq, i) => {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.12, t + i * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.08 + 0.25);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start(t + i * 0.08);
+      osc.stop(t + i * 0.08 + 0.25);
+    });
+  },
+
+  bossFail() {
+    playTone(200, 0.2, 'sawtooth', 0.1);
+    playTone(150, 0.3, 'sawtooth', 0.06);
   },
 
   collect(pitch = 0) {
@@ -61,7 +87,7 @@ export const SFX = {
     playTone(freq * 1.5, 0.06, 'square', 0.05);
   },
 
-  craft() {
+  hire() {
     const ac = getCtx();
     const t = ac.currentTime;
     [523, 659, 784].forEach((freq, i) => {
@@ -78,7 +104,7 @@ export const SFX = {
     });
   },
 
-  levelUp() {
+  skill() {
     const ac = getCtx();
     const t = ac.currentTime;
     [392, 494, 587, 784].forEach((freq, i) => {
@@ -95,20 +121,20 @@ export const SFX = {
     });
   },
 
-  buyLand() {
+  prestige() {
     const ac = getCtx();
     const t = ac.currentTime;
-    [880, 1100, 880, 1100].forEach((freq, i) => {
+    [440, 554, 659, 880, 1100].forEach((freq, i) => {
       const osc = ac.createOscillator();
       const gain = ac.createGain();
-      osc.type = 'square';
+      osc.type = 'sine';
       osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.1, t + i * 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.05 + 0.1);
+      gain.gain.setValueAtTime(0.1, t + i * 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.12 + 0.4);
       osc.connect(gain);
       gain.connect(ac.destination);
-      osc.start(t + i * 0.05);
-      osc.stop(t + i * 0.05 + 0.1);
+      osc.start(t + i * 0.12);
+      osc.stop(t + i * 0.12 + 0.4);
     });
   },
 

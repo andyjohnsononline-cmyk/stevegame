@@ -1,20 +1,16 @@
 import Phaser from 'phaser';
 import { SaveSystem } from '../utils/SaveSystem.js';
-import { RESOURCE_TYPES } from '../data/resourceData.js';
-import { RECIPES } from '../data/craftingData.js';
+import { CREW_MEMBERS, getCrewHireCost, getCrewDPS, getTotalDPS } from '../data/crewData.js';
+import { SKILLS, isSkillReady, isSkillActive, getSkillCooldownRemaining, getSkillDurationRemaining } from '../data/skillData.js';
+import { canPrestige, getPrestigeStarPower } from '../data/prestigeData.js';
+import { isBossStage, getBossTimerSec } from '../data/stageData.js';
+import { formatNumber } from './GameScene.js';
 import { SFX } from '../utils/SoundGenerator.js';
-import { computeStarRating } from '../data/goalData.js';
 
 const HIGHLIGHT = '#E8913A';
 const TEXT_COLOR = '#F5E6CC';
 const DIM_COLOR = '#8888aa';
-
-const INV_ITEMS = ['script', 'idea', 'coffee', 'contact', 'pitch', 'project', 'coin'];
-const SLOT_SIZE = 34;
-const SLOT_GAP = 3;
-const INV_Y = 614;
-
-const XP_THRESHOLDS = [0, 20, 50, 100, 200, 350, 550, 800, 1100, 1500];
+const GOLD_COLOR = '#FFD700';
 
 export class UIScene extends Phaser.Scene {
   constructor() {
@@ -26,397 +22,256 @@ export class UIScene extends Phaser.Scene {
   }
 
   create() {
-    this.prevInventory = {};
-    this._snapshotInventory();
-
-    this._createInventoryBar();
-    this._createXPBar();
-    this._createLevelBadge();
-    this._createStarDisplay();
-    this._createDeskPrompt();
-    this._createCraftingPanel();
+    this._createTopHUD();
+    this._createHPBar();
+    this._createBossTimer();
+    this._createSkillBar();
+    this._createBottomPanel();
+    this._createCrewPanel();
+    this._createTapUpgradeButton();
+    this._createPrestigeButton();
+    this._createDPSLabel();
     this._createPauseOverlay();
 
-    this.gameScene.events.on('inventory-changed', () => {
-      this._pulseChangedSlots();
-      this._updateInventory();
-      this._snapshotInventory();
-    });
-    this.gameScene.events.on('desk-proximity', (near) => this._onDeskProximity(near));
-    this.gameScene.events.on('crafting-toggled', (open) => this._onCraftingToggled(open));
-    this.gameScene.events.on('level-up', (level, upgradeLabel) => this._onLevelUp(level, upgradeLabel));
-    this.gameScene.events.on('pause-toggled', () => this._togglePause());
-    this.gameScene.events.on('star-earned', (stars, label) => this._onStarEarned(stars, label));
+    this.gameScene.events.on('coins-changed', () => this._updateAll());
+    this.gameScene.events.on('enemy-changed', () => this._onEnemyChanged());
+    this.gameScene.events.on('hp-changed', (hp, max) => this._updateHP(hp, max));
+    this.gameScene.events.on('boss-timer', (remaining, total) => this._updateBossTimer(remaining, total));
+    this.gameScene.events.on('skill-activated', () => this._updateSkills());
 
-    this._updateInventory();
-    this._updateXP();
+    this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
+      .on('down', () => this._togglePause());
+
+    this._updateAll();
+    this._onEnemyChanged();
   }
 
-  _snapshotInventory() {
-    const inv = this.gameScene?.gameState?.inventory;
-    if (!inv) return;
-    for (const k of INV_ITEMS) {
-      this.prevInventory[k] = inv[k] ?? 0;
-    }
+  // ===== TOP HUD =====
+
+  _createTopHUD() {
+    this.add.rectangle(480, 18, 960, 36, 0x000000, 0.6).setDepth(20);
+
+    this.stageText = this.add.text(20, 18, 'Stage 1', {
+      fontSize: '14px', fontFamily: 'monospace', color: TEXT_COLOR,
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0, 0.5).setDepth(21);
+
+    this.bossLabel = this.add.text(120, 18, 'BOSS', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#FF4444',
+      stroke: '#000000', strokeThickness: 2,
+      backgroundColor: '#441111',
+      padding: { left: 4, right: 4, top: 1, bottom: 1 },
+    }).setOrigin(0, 0.5).setDepth(21).setVisible(false);
+
+    this.coinIcon = this.add.image(900, 18, 'drop_coin').setDepth(21).setScale(1.5);
+    this.coinText = this.add.text(888, 18, '0', {
+      fontSize: '14px', fontFamily: 'monospace', color: GOLD_COLOR,
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(1, 0.5).setDepth(21);
   }
 
-  // ===== INVENTORY BAR =====
+  // ===== HP BAR =====
 
-  _createInventoryBar() {
-    const totalW = INV_ITEMS.length * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP;
-    const startX = (960 - totalW) / 2;
+  _createHPBar() {
+    this.hpBarBg = this.add.image(480, 340, 'hp_bar_bg').setDepth(5);
+    this.hpBarFill = this.add.image(382, 340, 'hp_bar_fill')
+      .setDepth(6).setOrigin(0, 0.5);
 
-    this.add.rectangle(480, INV_Y, totalW + 12, SLOT_SIZE + 8, 0x000000, 0.75)
-      .setDepth(0);
-
-    this.invSlots = [];
-
-    for (let i = 0; i < INV_ITEMS.length; i++) {
-      const resId = INV_ITEMS[i];
-      const x = startX + i * (SLOT_SIZE + SLOT_GAP) + SLOT_SIZE / 2;
-
-      const slot = this.add.image(x, INV_Y, 'ui_slot')
-        .setDepth(1).setDisplaySize(SLOT_SIZE, SLOT_SIZE);
-
-      const rtype = RESOURCE_TYPES[resId];
-      const icon = this.add.image(x, INV_Y - 3, rtype.dropTexture)
-        .setDepth(2).setScale(1.4);
-
-      const count = this.add.text(x + 10, INV_Y + 8, '0', {
-        fontSize: '8px', fontFamily: 'monospace', color: TEXT_COLOR,
-        stroke: '#000000', strokeThickness: 2,
-      }).setOrigin(1, 0.5).setDepth(3);
-
-      this.invSlots.push({ resId, slot, icon, count });
-    }
+    this.hpText = this.add.text(480, 340, '', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#ffffff',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(7);
   }
 
-  _updateInventory() {
-    const inv = this.gameScene?.gameState?.inventory;
-    if (!inv) return;
-
-    for (const s of this.invSlots) {
-      const val = inv[s.resId] ?? 0;
-      s.count.setText(val > 0 ? val.toString() : '');
-      s.icon.setAlpha(val > 0 ? 1 : 0.35);
-    }
+  _updateHP(hp, max) {
+    const ratio = Math.max(0, hp / max);
+    this.hpBarFill.setDisplaySize(196 * ratio, 12);
+    this.hpText.setText(`${formatNumber(Math.max(0, Math.ceil(hp)))} / ${formatNumber(max)}`);
   }
 
-  _pulseChangedSlots() {
-    const inv = this.gameScene?.gameState?.inventory;
-    if (!inv) return;
+  // ===== BOSS TIMER =====
 
-    for (const s of this.invSlots) {
-      const newVal = inv[s.resId] ?? 0;
-      const oldVal = this.prevInventory[s.resId] ?? 0;
-      if (newVal > oldVal) {
-        this.tweens.add({
-          targets: s.icon,
-          scaleX: { from: 2, to: 1.4 },
-          scaleY: { from: 2, to: 1.4 },
-          duration: 200,
-          ease: 'Back.easeOut',
-        });
-        this.tweens.add({
-          targets: s.slot,
-          alpha: { from: 1, to: 0.7 },
-          duration: 100,
-          yoyo: true,
-        });
-      }
-    }
-  }
-
-  // ===== XP BAR =====
-
-  _createXPBar() {
-    this.add.rectangle(480, 14, 220, 22, 0x000000, 0.75).setDepth(0);
-
-    this.xpBarBg = this.add.image(480, 14, 'ui_xp_bg').setDepth(1);
-    this.xpBarFill = this.add.image(380, 14, 'ui_xp_fill').setDepth(2)
-      .setOrigin(0, 0.5).setDisplaySize(1, 8);
-
-    this.xpText = this.add.text(480, 14, '', {
+  _createBossTimer() {
+    this.bossTimerBg = this.add.image(480, 358, 'boss_timer_bg').setDepth(5).setVisible(false);
+    this.bossTimerFill = this.add.image(402, 358, 'boss_timer_fill')
+      .setDepth(6).setOrigin(0, 0.5).setVisible(false);
+    this.bossTimerText = this.add.text(480, 358, '', {
       fontSize: '7px', fontFamily: 'monospace', color: '#ffffff',
       stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(3);
+    }).setOrigin(0.5).setDepth(7).setVisible(false);
   }
 
-  _createLevelBadge() {
-    this.levelBg = this.add.circle(48, 14, 14, 0xe8913a, 1).setDepth(2);
-    this.levelText = this.add.text(48, 14, '1', {
-      fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
-      stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(3);
+  _updateBossTimer(remaining, total) {
+    const show = remaining > 0;
+    this.bossTimerBg.setVisible(show);
+    this.bossTimerFill.setVisible(show);
+    this.bossTimerText.setVisible(show);
 
-    this.coinIcon = this.add.image(910, 14, 'drop_coin').setDepth(2).setScale(1.5);
-    this.coinText = this.add.text(898, 14, '0', {
-      fontSize: '11px', fontFamily: 'monospace', color: '#FFD700',
-      stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(1, 0.5).setDepth(2);
-  }
-
-  // ===== STAR RATING =====
-
-  _createStarDisplay() {
-    this.starIcons = [];
-    const startX = 80;
-    for (let i = 0; i < 5; i++) {
-      const star = this.add.image(startX + i * 16, 14, 'star_empty')
-        .setDepth(2).setScale(1);
-      this.starIcons.push(star);
-    }
-    this._updateStars();
-  }
-
-  _updateStars() {
-    const gs = this.gameScene?.gameState;
-    if (!gs) return;
-    const stars = computeStarRating(gs);
-    for (let i = 0; i < 5; i++) {
-      this.starIcons[i].setTexture(i < stars ? 'star_filled' : 'star_empty');
+    if (show) {
+      const ratio = Math.max(0, remaining / total);
+      this.bossTimerFill.setDisplaySize(156 * ratio, 6);
+      this.bossTimerText.setText(`${(remaining / 1000).toFixed(1)}s`);
     }
   }
 
-  _onStarEarned(stars, label) {
-    this._updateStars();
-    SFX.levelUp();
+  // ===== SKILL BAR =====
 
-    const banner = this.add.text(480, 120, `★ ${label} ★`, {
-      fontSize: '16px', fontFamily: 'monospace', color: '#FFD700',
-      stroke: '#000000', strokeThickness: 4,
-      backgroundColor: '#000000cc',
-      padding: { left: 14, right: 14, top: 6, bottom: 6 },
-    }).setOrigin(0.5).setDepth(30).setAlpha(0);
+  _createSkillBar() {
+    this.skillButtons = [];
+    const startX = 160;
+    const y = 390;
 
-    this.tweens.add({
-      targets: banner,
-      alpha: 1,
-      scaleX: { from: 0.5, to: 1 },
-      scaleY: { from: 0.5, to: 1 },
-      duration: 400,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        this.tweens.add({
-          targets: banner,
-          alpha: 0,
-          y: 100,
-          delay: 2000,
-          duration: 500,
-          onComplete: () => banner.destroy(),
-        });
-      },
-    });
+    for (let i = 0; i < SKILLS.length; i++) {
+      const skill = SKILLS[i];
+      const x = startX + i * 56;
 
-    for (let i = 0; i < stars; i++) {
-      this.tweens.add({
-        targets: this.starIcons[i],
-        scaleX: { from: 2, to: 1 },
-        scaleY: { from: 2, to: 1 },
-        duration: 300,
-        delay: i * 80,
-        ease: 'Back.easeOut',
-      });
-    }
-  }
-
-  _onLevelUp(level, upgradeLabel) {
-    this.tweens.add({
-      targets: this.levelBg,
-      scaleX: { from: 2, to: 1 },
-      scaleY: { from: 2, to: 1 },
-      duration: 400,
-      ease: 'Back.easeOut',
-    });
-
-    if (upgradeLabel) {
-      const banner = this.add.text(480, 80, `${upgradeLabel}!`, {
-        fontSize: '14px', fontFamily: 'monospace', color: '#44ff44',
-        stroke: '#000000', strokeThickness: 3,
-        backgroundColor: '#000000aa',
-        padding: { left: 10, right: 10, top: 4, bottom: 4 },
-      }).setOrigin(0.5).setDepth(25).setAlpha(0);
-
-      this.tweens.add({
-        targets: banner,
-        alpha: { from: 0, to: 1 },
-        y: { from: 90, to: 70 },
-        duration: 300,
-        ease: 'Back.easeOut',
-        onComplete: () => {
-          this.tweens.add({
-            targets: banner,
-            alpha: 0,
-            y: 55,
-            delay: 1500,
-            duration: 400,
-            onComplete: () => banner.destroy(),
-          });
-        },
-      });
-    }
-  }
-
-  _updateXP() {
-    const gs = this.gameScene?.gameState;
-    if (!gs) return;
-
-    const level = gs.level ?? 1;
-    const xp = gs.xp ?? 0;
-
-    this.levelText.setText(`${level}`);
-
-    const currentThreshold = XP_THRESHOLDS[level - 1] ?? 0;
-    const nextThreshold = XP_THRESHOLDS[level] ?? null;
-
-    if (nextThreshold != null) {
-      const progress = (xp - currentThreshold) / (nextThreshold - currentThreshold);
-      this.xpBarFill.setDisplaySize(Math.max(1, 200 * Math.min(1, progress)), 8);
-      this.xpText.setText(`${xp} / ${nextThreshold} XP`);
-    } else {
-      this.xpBarFill.setDisplaySize(200, 8);
-      this.xpText.setText(`${xp} XP (MAX)`);
-    }
-
-    this.coinText.setText(`${gs.inventory?.coin ?? 0}`);
-  }
-
-  // ===== DESK PROMPT =====
-
-  _createDeskPrompt() {
-    this.deskPrompt = this.add.text(480, 548, '[E] Craft', {
-      fontSize: '10px', fontFamily: 'monospace', color: TEXT_COLOR,
-      backgroundColor: '#000000aa',
-      padding: { left: 6, right: 6, top: 3, bottom: 3 },
-    }).setOrigin(0.5).setDepth(10).setAlpha(0);
-  }
-
-  _onDeskProximity(near) {
-    this.tweens.killTweensOf(this.deskPrompt);
-    this.tweens.add({
-      targets: this.deskPrompt,
-      alpha: near ? 1 : 0,
-      duration: 150,
-    });
-  }
-
-  // ===== CRAFTING PANEL =====
-
-  _createCraftingPanel() {
-    this.craftContainer = this.add.container(480, 320).setDepth(20).setVisible(false);
-
-    const panelW = 290;
-    const rowH = 40;
-    const panelH = 30 + RECIPES.length * rowH + 20;
-
-    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x0d0d1a, 0.92);
-    const border = this.add.rectangle(0, 0, panelW, panelH)
-      .setStrokeStyle(2, 0xe8913a);
-
-    const title = this.add.text(0, -panelH / 2 + 14, 'CRAFTING', {
-      fontSize: '12px', fontFamily: 'monospace', color: HIGHLIGHT,
-    }).setOrigin(0.5);
-
-    this.craftContainer.add([bg, border, title]);
-
-    this.recipeButtons = [];
-    const startY = -panelH / 2 + 34;
-
-    for (let i = 0; i < RECIPES.length; i++) {
-      const recipe = RECIPES[i];
-      const ry = startY + i * rowH;
-
-      const rowBg = this.add.rectangle(0, ry + 10, panelW - 16, rowH - 4, 0x222244, 0.6);
-
-      const inputIcons = [];
-      const inputKeys = Object.keys(recipe.inputs);
-      const iconStartX = -panelW / 2 + 20;
-
-      for (let j = 0; j < inputKeys.length; j++) {
-        const resId = inputKeys[j];
-        const rtype = RESOURCE_TYPES[resId];
-        const ix = iconStartX + j * 24;
-        const ic = this.add.image(ix, ry + 4, rtype.dropTexture).setScale(1.1);
-        const ct = this.add.text(ix + 7, ry + 10, `${recipe.inputs[resId]}`, {
-          fontSize: '7px', fontFamily: 'monospace', color: TEXT_COLOR,
-          stroke: '#000', strokeThickness: 2,
-        }).setOrigin(0.5);
-        inputIcons.push(ic, ct);
-      }
-
-      const arrowX = iconStartX + inputKeys.length * 24 + 2;
-      const arrow = this.add.text(arrowX, ry + 4, '->', {
-        fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
-      }).setOrigin(0, 0.5);
-
-      const outType = RESOURCE_TYPES[recipe.output.type];
-      const outIcon = this.add.image(arrowX + 22, ry + 4,
-        outType?.dropTexture ?? 'drop_coin').setScale(1.1);
-
-      const nameText = this.add.text(iconStartX, ry + 18, recipe.name, {
-        fontSize: '7px', fontFamily: 'monospace', color: DIM_COLOR,
-      });
-
-      const btn = this.add.rectangle(panelW / 2 - 38, ry + 10, 46, 24, 0xe8913a, 0.9)
-        .setDepth(21).setInteractive({ useHandCursor: true })
-        .on('pointerover', () => btn.setFillStyle(0xf09530))
-        .on('pointerout', () => btn.setFillStyle(0xe8913a, 0.9))
-        .on('pointerdown', () => {
-          if (this.gameScene.craft(recipe.id)) {
-            this._updateCraftingPanel();
-            this.tweens.add({
-              targets: btn,
-              scaleX: { from: 1.2, to: 1 },
-              scaleY: { from: 0.8, to: 1 },
-              duration: 120,
-              ease: 'Back.easeOut',
-            });
-          }
-        });
-
-      const btnLabel = this.add.text(panelW / 2 - 38, ry + 10, 'CRAFT', {
+      const bg = this.add.image(x, y, 'btn_skill').setDepth(20);
+      const icon = this.add.image(x, y - 2, skill.icon).setDepth(21);
+      const cdText = this.add.text(x, y + 16, '', {
         fontSize: '7px', fontFamily: 'monospace', color: '#ffffff',
+        stroke: '#000000', strokeThickness: 2,
       }).setOrigin(0.5).setDepth(22);
 
-      this.craftContainer.add([rowBg, ...inputIcons, arrow, outIcon, nameText, btn, btnLabel]);
-      this.recipeButtons.push({ recipe, btn, btnLabel });
+      bg.setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => {
+          this.gameScene.activateSkill(skill.id);
+        });
+
+      this.skillButtons.push({ skill, bg, icon, cdText });
     }
 
-    const closeText = this.add.text(0, panelH / 2 - 12, '[E] Close', {
-      fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
-    }).setOrigin(0.5);
-    this.craftContainer.add(closeText);
+    this.dpsText = this.add.text(500, y, 'DPS: 0', {
+      fontSize: '12px', fontFamily: 'monospace', color: HIGHLIGHT,
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0, 0.5).setDepth(20);
   }
 
-  _onCraftingToggled(open) {
-    this.craftContainer.setVisible(open);
-    if (open) {
-      this._updateCraftingPanel();
-      SFX.uiOpen();
-    } else {
-      SFX.uiClose();
+  // ===== BOTTOM PANEL =====
+
+  _createBottomPanel() {
+    this.add.rectangle(480, 540, 960, 220, 0x111122, 0.92).setDepth(15);
+    this.add.rectangle(480, 430, 960, 2, 0x333355).setDepth(16);
+  }
+
+  // ===== CREW PANEL =====
+
+  _createCrewPanel() {
+    this.crewRows = [];
+    const startX = 30;
+    const startY = 440;
+    const rowH = 38;
+
+    this.crewScrollY = 0;
+    this.crewContainer = this.add.container(0, 0).setDepth(20);
+
+    for (let i = 0; i < CREW_MEMBERS.length; i++) {
+      const crew = CREW_MEMBERS[i];
+      const y = startY + i * rowH;
+
+      const icon = this.add.image(startX + 16, y, `crew_${crew.id}`).setScale(1);
+
+      const nameText = this.add.text(startX + 36, y - 8, crew.name, {
+        fontSize: '9px', fontFamily: 'monospace', color: crew.color,
+        stroke: '#000000', strokeThickness: 1,
+      });
+
+      const levelText = this.add.text(startX + 36, y + 4, 'Lv 0', {
+        fontSize: '8px', fontFamily: 'monospace', color: DIM_COLOR,
+      });
+
+      const dpsText = this.add.text(startX + 160, y, 'DPS: 0', {
+        fontSize: '8px', fontFamily: 'monospace', color: TEXT_COLOR,
+      }).setOrigin(0, 0.5);
+
+      const btnBg = this.add.image(startX + 310, y, 'btn_hire').setInteractive({ useHandCursor: true });
+      const btnText = this.add.text(startX + 310, y, 'HIRE', {
+        fontSize: '8px', fontFamily: 'monospace', color: '#ffffff',
+      }).setOrigin(0.5);
+
+      const costText = this.add.text(startX + 310, y + 14, '', {
+        fontSize: '7px', fontFamily: 'monospace', color: GOLD_COLOR,
+      }).setOrigin(0.5);
+
+      const lockText = this.add.text(startX + 250, y, '', {
+        fontSize: '7px', fontFamily: 'monospace', color: DIM_COLOR,
+      }).setOrigin(0, 0.5).setVisible(false);
+
+      btnBg.on('pointerdown', () => {
+        this.gameScene.hireCrew(crew.id);
+      });
+
+      this.crewContainer.add([icon, nameText, levelText, dpsText, btnBg, btnText, costText, lockText]);
+      this.crewRows.push({ crew, icon, nameText, levelText, dpsText, btnBg, btnText, costText, lockText });
     }
-  }
 
-  _updateCraftingPanel() {
-    const inv = this.gameScene?.gameState?.inventory;
-    if (!inv) return;
+    const crewMask = this.add.rectangle(240, 520, 480, 190, 0x000000, 0).setVisible(false);
+    const mask = this.make.graphics();
+    mask.fillRect(0, 432, 480, 200);
+    this.crewContainer.setMask(new Phaser.Display.Masks.GeometryMask(this, mask));
 
-    for (const rb of this.recipeButtons) {
-      const canCraft = Object.entries(rb.recipe.inputs).every(
-        ([res, amount]) => (inv[res] ?? 0) >= amount
-      );
-      rb.btn.setFillStyle(canCraft ? 0xe8913a : 0x444455, canCraft ? 0.9 : 0.6);
-      if (canCraft) {
-        rb.btn.setInteractive({ useHandCursor: true });
-      } else {
-        rb.btn.disableInteractive();
+    this.input.on('wheel', (pointer, _go, _dx, dy) => {
+      if (pointer.x < 490) {
+        this.crewScrollY = Phaser.Math.Clamp(
+          this.crewScrollY - dy * 0.5,
+          -(CREW_MEMBERS.length * 38 - 180),
+          0,
+        );
+        this.crewContainer.y = this.crewScrollY;
       }
-      rb.btnLabel.setColor(canCraft ? '#ffffff' : '#666666');
-    }
+    });
   }
 
-  // ===== PAUSE OVERLAY =====
+  // ===== TAP UPGRADE =====
+
+  _createTapUpgradeButton() {
+    const x = 700;
+    const y = 460;
+
+    this.tapUpgBg = this.add.image(x, y, 'btn_upgrade').setDepth(20)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.gameScene.upgradeTap());
+
+    this.tapUpgText = this.add.text(x, y - 4, '', {
+      fontSize: '9px', fontFamily: 'monospace', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(21);
+
+    this.tapUpgCost = this.add.text(x, y + 10, '', {
+      fontSize: '8px', fontFamily: 'monospace', color: GOLD_COLOR,
+    }).setOrigin(0.5).setDepth(21);
+  }
+
+  // ===== PRESTIGE =====
+
+  _createPrestigeButton() {
+    const x = 700;
+    const y = 520;
+
+    this.prestigeBg = this.add.image(x, y, 'btn_prestige').setDepth(20)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        this.gameScene.doPrestige();
+      });
+
+    this.prestigeText = this.add.text(x, y - 4, 'New Season', {
+      fontSize: '9px', fontFamily: 'monospace', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(21);
+
+    this.prestigeInfo = this.add.text(x, y + 10, '', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#cc99ff',
+    }).setOrigin(0.5).setDepth(21);
+
+    this.starPowerText = this.add.text(x, y + 40, '', {
+      fontSize: '8px', fontFamily: 'monospace', color: GOLD_COLOR,
+    }).setOrigin(0.5).setDepth(20);
+  }
+
+  // ===== DPS LABEL =====
+
+  _createDPSLabel() {
+    // already created in skill bar area
+  }
+
+  // ===== PAUSE =====
 
   _createPauseOverlay() {
     this.pauseContainer = this.add.container(480, 320).setDepth(30).setVisible(false);
@@ -443,8 +298,6 @@ export class UIScene extends Phaser.Scene {
       .on('pointerover', () => menuBtn.setFillStyle(0x555577))
       .on('pointerout', () => menuBtn.setFillStyle(0x444466, 0.9))
       .on('pointerdown', () => {
-        this.gameScene.gameState.playerX = this.gameScene.player.x;
-        this.gameScene.gameState.playerY = this.gameScene.player.y;
         SaveSystem.save(this.gameScene.gameState);
         this.scene.stop('GameScene');
         this.scene.stop('UIScene');
@@ -469,8 +322,9 @@ export class UIScene extends Phaser.Scene {
 
     if (this.isPaused) {
       const gs = this.gameScene.gameState;
+      const sp = gs.prestige?.starPower ?? 1;
       this.pauseStats.setText(
-        `Lv ${gs.level} | ${gs.totalProjects ?? 0} shows | ${gs.unlockedLands?.length ?? 1} lands`
+        `Stage ${gs.stage} | Max ${gs.maxStage} | ★${sp.toFixed(1)}x | ${gs.prestige?.count ?? 0} seasons`
       );
       this.gameScene.scene.pause();
     } else {
@@ -478,14 +332,137 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
+  // ===== UPDATE ALL =====
+
+  _updateAll() {
+    const gs = this.gameScene.gameState;
+
+    this.stageText.setText(`Stage ${gs.stage}`);
+    this.coinText.setText(formatNumber(gs.coins));
+    this.bossLabel.setVisible(isBossStage(gs.stage));
+
+    this._updateCrew();
+    this._updateTapUpgrade();
+    this._updatePrestige();
+    this._updateDPS();
+  }
+
+  _onEnemyChanged() {
+    const gs = this.gameScene.gameState;
+    this.stageText.setText(`Stage ${gs.stage}`);
+    this.bossLabel.setVisible(isBossStage(gs.stage));
+    this._updateHP(this.gameScene.enemyHP, this.gameScene.enemyMaxHP);
+
+    const showTimer = isBossStage(gs.stage);
+    this.bossTimerBg.setVisible(showTimer);
+    this.bossTimerFill.setVisible(showTimer);
+    this.bossTimerText.setVisible(showTimer);
+  }
+
+  _updateCrew() {
+    const gs = this.gameScene.gameState;
+    const starPower = gs.prestige?.starPower ?? 1;
+
+    for (const row of this.crewRows) {
+      const state = gs.crew.find(c => c.id === row.crew.id);
+      const level = state?.level ?? 0;
+      const unlocked = gs.maxStage >= row.crew.unlockStage;
+
+      row.levelText.setText(`Lv ${level}`);
+
+      if (!unlocked) {
+        row.lockText.setVisible(true);
+        row.lockText.setText(`Unlocks at stage ${row.crew.unlockStage}`);
+        row.btnBg.setVisible(false);
+        row.btnText.setVisible(false);
+        row.costText.setVisible(false);
+        row.dpsText.setText('');
+        row.icon.setAlpha(0.3);
+        row.nameText.setAlpha(0.4);
+        row.levelText.setAlpha(0.4);
+      } else {
+        row.lockText.setVisible(false);
+        row.btnBg.setVisible(true);
+        row.btnText.setVisible(true);
+        row.costText.setVisible(true);
+        row.icon.setAlpha(1);
+        row.nameText.setAlpha(1);
+        row.levelText.setAlpha(1);
+
+        const cost = getCrewHireCost(row.crew, level);
+        const canAfford = gs.coins >= cost;
+
+        row.costText.setText(`$${formatNumber(cost)}`);
+        row.btnBg.setTexture(canAfford ? 'btn_hire' : 'btn_hire_disabled');
+        row.btnText.setText(level === 0 ? 'HIRE' : 'LVL UP');
+
+        const dps = getCrewDPS(row.crew, level, starPower);
+        row.dpsText.setText(level > 0 ? `DPS: ${formatNumber(dps)}` : '');
+      }
+    }
+  }
+
+  _updateTapUpgrade() {
+    const gs = this.gameScene.gameState;
+    const cost = this.gameScene.getTapUpgradeCost();
+    const canAfford = gs.coins >= cost;
+
+    this.tapUpgText.setText(`Tap Lv ${gs.tapLevel} → ${gs.tapLevel + 1}`);
+    this.tapUpgCost.setText(`$${formatNumber(cost)}`);
+    this.tapUpgBg.setTexture(canAfford ? 'btn_upgrade' : 'btn_upgrade_disabled');
+  }
+
+  _updatePrestige() {
+    const gs = this.gameScene.gameState;
+    const can = canPrestige(gs.maxStage);
+    const earn = getPrestigeStarPower(gs.maxStage);
+
+    this.prestigeBg.setAlpha(can ? 1 : 0.4);
+    this.prestigeInfo.setText(can ? `+${earn} ★ Star Power` : `Reach stage 50`);
+    this.starPowerText.setText(`★ ${(gs.prestige?.starPower ?? 1).toFixed(1)}x Star Power`);
+  }
+
+  _updateDPS() {
+    const gs = this.gameScene.gameState;
+    const starPower = gs.prestige?.starPower ?? 1;
+    const dps = getTotalDPS(gs.crew, starPower);
+    this.dpsText.setText(`DPS: ${formatNumber(dps)}`);
+  }
+
+  _updateSkills() {
+    const now = Date.now();
+    const gs = this.gameScene.gameState;
+
+    for (const sb of this.skillButtons) {
+      const state = gs.skills[sb.skill.id];
+      const ready = isSkillReady(state, now);
+      const active = isSkillActive(state, now);
+
+      if (active) {
+        sb.bg.setTexture('btn_skill_active');
+        const rem = getSkillDurationRemaining(sb.skill, state, now);
+        sb.cdText.setText(`${rem.toFixed(0)}s`);
+      } else if (!ready) {
+        sb.bg.setTexture('btn_skill_cooldown');
+        const rem = getSkillCooldownRemaining(sb.skill, state, now);
+        sb.cdText.setText(`${rem.toFixed(0)}s`);
+      } else {
+        sb.bg.setTexture('btn_skill');
+        sb.cdText.setText('');
+      }
+    }
+  }
+
   // ===== UPDATE =====
 
   update() {
-    this._updateXP();
-    this._updateStars();
+    this._updateSkills();
 
-    if (this.craftContainer.visible) {
-      this._updateCraftingPanel();
-    }
+    const gs = this.gameScene.gameState;
+    this.coinText.setText(formatNumber(gs.coins));
+    this._updateCrew();
+    this._updateTapUpgrade();
+    this._updatePrestige();
+    this._updateDPS();
   }
 }

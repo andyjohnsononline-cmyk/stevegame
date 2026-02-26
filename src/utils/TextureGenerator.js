@@ -1,19 +1,14 @@
 const PALETTE = {
-  grass: 0x4a8c5c,
-  grassLight: 0x5ca86e,
-  grassDark: 0x3d7a4e,
-  grassAlt: 0x52965e,
-  path: 0xc4a96a,
-  pathDark: 0xb09858,
-  floor: 0x8899aa,
-  floorDark: 0x778899,
-  water: 0x3388bb,
-  waterDark: 0x2266aa,
-  waterLight: 0x55aadd,
   skin: 0xf5c6a0,
+  skinDark: 0xd4a67a,
   shirt: 0x3366cc,
-  pants: 0x334455,
+  shirtDark: 0x224488,
+  suit: 0x334455,
+  suitDark: 0x222233,
   hair: 0x553322,
+  hairDark: 0x3a2211,
+  tie: 0xcc3333,
+  tieGold: 0xffd700,
   paper: 0xfff5e1,
   paperLine: 0xccc4b4,
   wood: 0x8b6914,
@@ -22,29 +17,28 @@ const PALETTE = {
   metalDark: 0x666666,
   coffeeBrown: 0x6d4c2f,
   coffeeLight: 0x8d6e63,
-  ideaYellow: 0xffd54f,
-  ideaGlow: 0xffecb3,
-  contactBlue: 0x64b5f6,
-  contactDark: 0x2196f3,
   coin: 0xffd700,
   coinDark: 0xdaa520,
-  pitchOrange: 0xff8a65,
-  projectPurple: 0xab47bc,
-  deskTop: 0x9e7c4f,
-  deskLeg: 0x6b5230,
-  uiPanel: 0x2d2d44,
+  uiPanel: 0x1a1a2e,
+  uiPanelLight: 0x2d2d44,
   uiBorder: 0xe8913a,
   uiText: 0xfff5e1,
-  xpOrange: 0xe8913a,
-  xpGlow: 0xffcc66,
+  hpRed: 0xdd3333,
+  hpRedDark: 0x991111,
+  hpGreen: 0x44cc44,
+  hpBg: 0x222233,
   white: 0xffffff,
   black: 0x000000,
   red: 0xff4444,
   green: 0x44cc44,
   spark: 0xffffaa,
-  locked: 0x223344,
-  lockedEdge: 0x445566,
-  buyGlow: 0x66ff66,
+  blue: 0x4488ff,
+  purple: 0xab47bc,
+  orange: 0xff8844,
+  cyan: 0x44dddd,
+  bgSky: 0x1a1a2e,
+  bgFloor: 0x2d2d44,
+  bgWall: 0x252540,
 };
 
 function tex(scene, key, w, h, fn) {
@@ -56,231 +50,241 @@ function tex(scene, key, w, h, fn) {
 
 export class TextureGenerator {
   static generateAll(scene) {
-    this._generatePlayer(scene);
-    this._generateGround(scene);
-    this._generateNodes(scene);
-    this._generateDrops(scene);
-    this._generateDesk(scene);
+    this._generateExecs(scene);
+    this._generateCrewIcons(scene);
+    this._generateSkillIcons(scene);
     this._generateUI(scene);
-    this._generateDecorations(scene);
     this._generateEffects(scene);
-    this._generateLand(scene);
-    this._generateStars(scene);
+    this._generateBackground(scene);
   }
 
-  static _generatePlayer(scene) {
-    const dirs = ['down', 'up', 'left', 'right'];
-    for (const dir of dirs) {
-      tex(scene, `player_${dir}`, 16, 16, (g) => {
-        g.fillStyle(PALETTE.hair);
-        g.fillRect(4, 0, 8, 4);
+  static _generateExecs(scene) {
+    const tiers = [
+      { key: 'exec_0', suitColor: 0x555566, tieColor: 0x888899, size: 48 },
+      { key: 'exec_1', suitColor: 0x445566, tieColor: 0x4488cc, size: 52 },
+      { key: 'exec_2', suitColor: 0x334455, tieColor: 0xcc3333, size: 56 },
+      { key: 'exec_3', suitColor: 0x222244, tieColor: 0xffd700, size: 60 },
+      { key: 'exec_4', suitColor: 0x111122, tieColor: 0xff4444, size: 64 },
+    ];
+
+    for (const t of tiers) {
+      const s = t.size;
+      tex(scene, t.key, s, s, (g) => {
+        const cx = s / 2;
+        g.fillStyle(t.suitColor);
+        g.fillRect(cx - s * 0.3, s * 0.45, s * 0.6, s * 0.55);
 
         g.fillStyle(PALETTE.skin);
-        g.fillRect(4, 3, 8, 5);
+        g.fillCircle(cx, s * 0.28, s * 0.18);
 
-        if (dir === 'down') {
-          g.fillStyle(PALETTE.black);
-          g.fillRect(5, 4, 2, 2);
-          g.fillRect(9, 4, 2, 2);
-        } else if (dir === 'left') {
-          g.fillStyle(PALETTE.black);
-          g.fillRect(4, 4, 2, 2);
-        } else if (dir === 'right') {
-          g.fillStyle(PALETTE.black);
-          g.fillRect(10, 4, 2, 2);
-        }
+        g.fillStyle(PALETTE.hair);
+        g.fillRect(cx - s * 0.18, s * 0.08, s * 0.36, s * 0.12);
 
-        g.fillStyle(PALETTE.shirt);
-        g.fillRect(3, 8, 10, 4);
+        g.fillStyle(t.tieColor);
+        g.fillRect(cx - 2, s * 0.45, 4, s * 0.25);
 
-        g.fillStyle(PALETTE.pants);
-        g.fillRect(4, 12, 3, 4);
-        g.fillRect(9, 12, 3, 4);
+        g.fillStyle(PALETTE.black);
+        g.fillRect(cx - s * 0.08, s * 0.24, 3, 3);
+        g.fillRect(cx + s * 0.04, s * 0.24, 3, 3);
+
+        g.fillStyle(PALETTE.white);
+        g.fillRect(cx - s * 0.22, s * 0.5, s * 0.14, s * 0.08);
+        g.fillRect(cx + s * 0.08, s * 0.5, s * 0.14, s * 0.08);
+      });
+
+      tex(scene, t.key + '_boss', s + 16, s + 16, (g) => {
+        const bs = s + 16;
+        const cx = bs / 2;
+
+        g.fillStyle(0xffd700);
+        g.fillTriangle(cx, 2, cx - 10, 14, cx + 10, 14);
+        g.fillRect(cx - 12, 14, 24, 4);
+        g.fillCircle(cx - 8, 12, 2);
+        g.fillCircle(cx, 6, 2);
+        g.fillCircle(cx + 8, 12, 2);
+
+        g.fillStyle(t.suitColor);
+        g.fillRect(cx - s * 0.32, bs * 0.42, s * 0.64, s * 0.58);
+
+        g.fillStyle(PALETTE.skin);
+        g.fillCircle(cx, bs * 0.28, s * 0.2);
+
+        g.fillStyle(PALETTE.hair);
+        g.fillRect(cx - s * 0.2, bs * 0.1, s * 0.4, s * 0.14);
+
+        g.fillStyle(t.tieColor);
+        g.fillRect(cx - 3, bs * 0.42, 6, s * 0.28);
+
+        g.fillStyle(PALETTE.black);
+        g.fillRect(cx - s * 0.1, bs * 0.24, 4, 4);
+        g.fillRect(cx + s * 0.04, bs * 0.24, 4, 4);
+
+        g.fillStyle(PALETTE.white);
+        g.fillRect(cx - s * 0.24, bs * 0.48, s * 0.16, s * 0.1);
+        g.fillRect(cx + s * 0.1, bs * 0.48, s * 0.16, s * 0.1);
       });
     }
   }
 
-  static _generateGround(scene) {
-    tex(scene, 'tile_grass', 32, 32, (g) => {
-      g.fillStyle(PALETTE.grass);
-      g.fillRect(0, 0, 32, 32);
-      g.fillStyle(PALETTE.grassLight);
-      g.fillRect(4, 6, 2, 2);
-      g.fillRect(18, 14, 2, 2);
-      g.fillRect(10, 26, 2, 2);
-      g.fillRect(26, 4, 2, 2);
-      g.fillStyle(PALETTE.grassDark);
-      g.fillRect(12, 2, 2, 2);
-      g.fillRect(24, 20, 2, 2);
-      g.fillRect(6, 22, 2, 2);
-    });
+  static _generateCrewIcons(scene) {
+    const crews = [
+      { id: 'crew_intern', color: 0x90caf9, hat: false },
+      { id: 'crew_writer', color: 0xfff59d, hat: false },
+      { id: 'crew_editor', color: 0xa5d6a7, hat: false },
+      { id: 'crew_director', color: 0xce93d8, hat: true },
+      { id: 'crew_producer', color: 0xffab91, hat: false },
+      { id: 'crew_star', color: 0xffd54f, hat: false },
+      { id: 'crew_composer', color: 0x80deea, hat: false },
+      { id: 'crew_showrunner', color: 0xef9a9a, hat: true },
+    ];
 
-    tex(scene, 'tile_grass_alt', 32, 32, (g) => {
-      g.fillStyle(PALETTE.grassAlt);
-      g.fillRect(0, 0, 32, 32);
-      g.fillStyle(PALETTE.grassLight);
-      g.fillRect(8, 4, 2, 2);
-      g.fillRect(22, 22, 2, 2);
-      g.fillRect(14, 16, 2, 2);
-      g.fillStyle(PALETTE.grassDark);
-      g.fillRect(2, 14, 2, 2);
-      g.fillRect(20, 8, 2, 2);
-    });
+    for (const c of crews) {
+      tex(scene, c.id, 24, 24, (g) => {
+        g.fillStyle(c.color);
+        g.fillCircle(12, 10, 8);
 
-    tex(scene, 'tile_path', 32, 32, (g) => {
-      g.fillStyle(PALETTE.path);
-      g.fillRect(0, 0, 32, 32);
-      g.fillStyle(PALETTE.pathDark);
-      g.fillRect(6, 8, 3, 2);
-      g.fillRect(20, 18, 3, 2);
-      g.fillRect(14, 4, 2, 2);
-      g.fillRect(8, 24, 3, 2);
-    });
+        g.fillStyle(PALETTE.skin);
+        g.fillCircle(12, 10, 5);
 
-    tex(scene, 'tile_water', 32, 32, (g) => {
-      g.fillStyle(PALETTE.water);
-      g.fillRect(0, 0, 32, 32);
-      g.fillStyle(PALETTE.waterDark);
-      g.fillRect(4, 8, 8, 2);
-      g.fillRect(16, 20, 10, 2);
-      g.fillStyle(PALETTE.waterLight);
-      g.fillRect(10, 4, 6, 1);
-      g.fillRect(20, 14, 4, 1);
-    });
+        g.fillStyle(PALETTE.black);
+        g.fillRect(10, 9, 2, 2);
+        g.fillRect(14, 9, 2, 2);
+
+        g.fillStyle(c.color);
+        g.fillRect(6, 16, 12, 8);
+
+        if (c.hat) {
+          g.fillStyle(PALETTE.black);
+          g.fillRect(6, 2, 12, 4);
+          g.fillRect(4, 5, 16, 2);
+        }
+      });
+    }
   }
 
-  static _generateNodes(scene) {
-    tex(scene, 'node_script_pile', 32, 32, (g) => {
-      g.fillStyle(PALETTE.woodDark);
-      g.fillRect(4, 20, 24, 12);
-      g.fillStyle(PALETTE.wood);
-      g.fillRect(5, 21, 22, 10);
-      g.fillStyle(PALETTE.paper);
-      g.fillRect(6, 4, 18, 16);
-      g.fillRect(8, 2, 16, 18);
-      g.fillStyle(PALETTE.paperLine);
-      g.fillRect(10, 6, 10, 1);
-      g.fillRect(10, 9, 12, 1);
-      g.fillRect(10, 12, 8, 1);
-      g.fillRect(10, 15, 11, 1);
-    });
-
-    tex(scene, 'node_script_pile_depleted', 32, 32, (g) => {
-      g.fillStyle(PALETTE.woodDark);
-      g.fillRect(4, 22, 24, 10);
-      g.fillStyle(PALETTE.wood);
-      g.fillRect(5, 23, 22, 8);
-    });
-
-    tex(scene, 'node_idea_board', 32, 32, (g) => {
-      g.fillStyle(PALETTE.woodDark);
-      g.fillRect(14, 20, 4, 12);
-      g.fillStyle(PALETTE.wood);
-      g.fillRect(2, 2, 28, 20);
-      g.fillStyle(0x557755);
-      g.fillRect(4, 4, 24, 16);
-      g.fillStyle(PALETTE.ideaYellow);
-      g.fillRect(8, 7, 6, 6);
-      g.fillRect(18, 9, 5, 5);
-      g.fillStyle(PALETTE.red);
-      g.fillRect(12, 12, 4, 4);
-    });
-
-    tex(scene, 'node_idea_board_depleted', 32, 32, (g) => {
-      g.fillStyle(PALETTE.woodDark);
-      g.fillRect(14, 20, 4, 12);
-      g.fillStyle(PALETTE.wood);
-      g.fillRect(2, 2, 28, 20);
-      g.fillStyle(0x557755);
-      g.fillRect(4, 4, 24, 16);
-    });
-
-    tex(scene, 'node_coffee_machine', 32, 32, (g) => {
-      g.fillStyle(PALETTE.metalDark);
-      g.fillRect(6, 4, 20, 24);
-      g.fillStyle(PALETTE.metal);
-      g.fillRect(8, 6, 16, 20);
-      g.fillStyle(PALETTE.coffeeBrown);
-      g.fillRect(10, 8, 12, 8);
-      g.fillStyle(PALETTE.red);
-      g.fillRect(10, 20, 4, 3);
-      g.fillStyle(PALETTE.green);
-      g.fillRect(16, 20, 4, 3);
-    });
-
-    tex(scene, 'node_coffee_machine_depleted', 32, 32, (g) => {
-      g.fillStyle(PALETTE.metalDark);
-      g.fillRect(6, 4, 20, 24);
-      g.fillStyle(PALETTE.metal);
-      g.fillRect(8, 6, 16, 20);
-      g.fillStyle(0x555555);
-      g.fillRect(10, 8, 12, 8);
-      g.fillStyle(0x444444);
-      g.fillRect(10, 20, 4, 3);
-      g.fillRect(16, 20, 4, 3);
-    });
-
-    tex(scene, 'node_networking', 32, 32, (g) => {
-      g.fillStyle(PALETTE.woodDark);
-      g.fillRect(4, 24, 4, 8);
-      g.fillRect(24, 24, 4, 8);
-      g.fillStyle(PALETTE.wood);
-      g.fillRect(2, 14, 28, 12);
-      g.fillStyle(PALETTE.deskTop);
-      g.fillRect(3, 15, 26, 10);
-      g.fillStyle(PALETTE.contactBlue);
-      g.fillRect(6, 16, 6, 4);
-      g.fillRect(14, 17, 5, 3);
-      g.fillStyle(PALETTE.paper);
-      g.fillRect(22, 16, 4, 5);
-    });
-
-    tex(scene, 'node_networking_depleted', 32, 32, (g) => {
-      g.fillStyle(PALETTE.woodDark);
-      g.fillRect(4, 24, 4, 8);
-      g.fillRect(24, 24, 4, 8);
-      g.fillStyle(PALETTE.wood);
-      g.fillRect(2, 14, 28, 12);
-      g.fillStyle(PALETTE.deskTop);
-      g.fillRect(3, 15, 26, 10);
-    });
-  }
-
-  static _generateDrops(scene) {
-    tex(scene, 'drop_script', 12, 12, (g) => {
-      g.fillStyle(PALETTE.paper);
-      g.fillRect(2, 1, 8, 10);
-      g.fillStyle(PALETTE.paperLine);
-      g.fillRect(3, 3, 5, 1);
-      g.fillRect(3, 5, 6, 1);
-      g.fillRect(3, 7, 4, 1);
-    });
-
-    tex(scene, 'drop_idea', 12, 12, (g) => {
-      g.fillStyle(PALETTE.ideaYellow);
-      g.fillCircle(6, 5, 4);
-      g.fillStyle(PALETTE.ideaGlow);
-      g.fillCircle(6, 4, 2);
-      g.fillStyle(PALETTE.ideaYellow);
-      g.fillRect(5, 9, 2, 3);
-    });
-
-    tex(scene, 'drop_coffee', 12, 12, (g) => {
+  static _generateSkillIcons(scene) {
+    tex(scene, 'skill_coffee', 28, 28, (g) => {
       g.fillStyle(PALETTE.coffeeLight);
-      g.fillRect(3, 3, 6, 8);
+      g.fillRect(8, 8, 12, 14);
       g.fillStyle(PALETTE.coffeeBrown);
-      g.fillRect(4, 4, 4, 3);
+      g.fillRect(10, 10, 8, 6);
       g.fillStyle(PALETTE.white);
-      g.fillRect(9, 5, 2, 4);
+      g.fillRect(20, 11, 4, 6);
+      g.fillStyle(0xdddddd);
+      g.fillRect(11, 4, 2, 5);
+      g.fillRect(15, 3, 2, 6);
     });
 
-    tex(scene, 'drop_contact', 12, 12, (g) => {
-      g.fillStyle(PALETTE.contactBlue);
-      g.fillRect(1, 2, 10, 7);
+    tex(scene, 'skill_viral', 28, 28, (g) => {
+      g.fillStyle(0x4fc3f7);
+      g.fillCircle(14, 14, 10);
+      g.fillStyle(0x29b6f6);
+      g.fillCircle(14, 14, 6);
       g.fillStyle(PALETTE.white);
-      g.fillRect(2, 3, 3, 2);
-      g.fillRect(6, 4, 4, 1);
-      g.fillRect(6, 6, 3, 1);
+      g.fillRect(12, 4, 4, 6);
+      g.fillRect(4, 12, 6, 4);
+      g.fillRect(18, 12, 6, 4);
+      g.fillRect(12, 18, 4, 6);
+    });
+
+    tex(scene, 'skill_power', 28, 28, (g) => {
+      g.fillStyle(0xff7043);
+      g.fillTriangle(14, 2, 8, 16, 14, 12);
+      g.fillTriangle(14, 12, 20, 16, 14, 26);
+      g.fillStyle(0xffab91);
+      g.fillTriangle(14, 5, 10, 14, 14, 12);
+    });
+
+    tex(scene, 'skill_brain', 28, 28, (g) => {
+      g.fillStyle(0xce93d8);
+      g.fillCircle(11, 12, 7);
+      g.fillCircle(17, 12, 7);
+      g.fillStyle(0xba68c8);
+      g.fillCircle(11, 11, 4);
+      g.fillCircle(17, 11, 4);
+      g.fillStyle(0xab47bc);
+      g.fillRect(12, 8, 4, 10);
+    });
+  }
+
+  static _generateUI(scene) {
+    tex(scene, 'hp_bar_bg', 200, 16, (g) => {
+      g.fillStyle(PALETTE.hpBg);
+      g.fillRoundedRect(0, 0, 200, 16, 4);
+      g.lineStyle(1, 0x444466, 0.8);
+      g.strokeRoundedRect(0, 0, 200, 16, 4);
+    });
+
+    tex(scene, 'hp_bar_fill', 196, 12, (g) => {
+      g.fillStyle(PALETTE.hpRed);
+      g.fillRoundedRect(0, 0, 196, 12, 3);
+      g.fillStyle(0xff5555);
+      g.fillRect(2, 2, 192, 4);
+    });
+
+    tex(scene, 'boss_timer_bg', 160, 10, (g) => {
+      g.fillStyle(0x222233);
+      g.fillRoundedRect(0, 0, 160, 10, 3);
+    });
+
+    tex(scene, 'boss_timer_fill', 156, 6, (g) => {
+      g.fillStyle(0xff6644);
+      g.fillRoundedRect(0, 0, 156, 6, 2);
+    });
+
+    tex(scene, 'btn_upgrade', 200, 36, (g) => {
+      g.fillStyle(PALETTE.uiBorder);
+      g.fillRoundedRect(0, 0, 200, 36, 6);
+    });
+
+    tex(scene, 'btn_upgrade_disabled', 200, 36, (g) => {
+      g.fillStyle(0x444455);
+      g.fillRoundedRect(0, 0, 200, 36, 6);
+    });
+
+    tex(scene, 'btn_skill', 48, 48, (g) => {
+      g.fillStyle(PALETTE.uiPanelLight);
+      g.fillRoundedRect(0, 0, 48, 48, 6);
+      g.lineStyle(2, PALETTE.uiBorder, 0.6);
+      g.strokeRoundedRect(1, 1, 46, 46, 6);
+    });
+
+    tex(scene, 'btn_skill_active', 48, 48, (g) => {
+      g.fillStyle(0x44aa44);
+      g.fillRoundedRect(0, 0, 48, 48, 6);
+      g.lineStyle(2, 0x66ff66, 0.8);
+      g.strokeRoundedRect(1, 1, 46, 46, 6);
+    });
+
+    tex(scene, 'btn_skill_cooldown', 48, 48, (g) => {
+      g.fillStyle(0x222233);
+      g.fillRoundedRect(0, 0, 48, 48, 6);
+      g.lineStyle(1, 0x555566, 0.4);
+      g.strokeRoundedRect(1, 1, 46, 46, 6);
+    });
+
+    tex(scene, 'crew_row_bg', 400, 44, (g) => {
+      g.fillStyle(PALETTE.uiPanelLight);
+      g.fillRoundedRect(0, 0, 400, 44, 4);
+      g.lineStyle(1, 0x444466, 0.4);
+      g.strokeRoundedRect(0, 0, 400, 44, 4);
+    });
+
+    tex(scene, 'btn_hire', 70, 28, (g) => {
+      g.fillStyle(0x44aa44);
+      g.fillRoundedRect(0, 0, 70, 28, 4);
+    });
+
+    tex(scene, 'btn_hire_disabled', 70, 28, (g) => {
+      g.fillStyle(0x444455);
+      g.fillRoundedRect(0, 0, 70, 28, 4);
+    });
+
+    tex(scene, 'btn_prestige', 160, 36, (g) => {
+      g.fillStyle(0x9933cc);
+      g.fillRoundedRect(0, 0, 160, 36, 6);
+      g.lineStyle(2, 0xcc66ff, 0.7);
+      g.strokeRoundedRect(1, 1, 158, 34, 6);
     });
 
     tex(scene, 'drop_coin', 12, 12, (g) => {
@@ -292,114 +296,22 @@ export class TextureGenerator {
       g.fillRect(5, 4, 2, 4);
     });
 
-    tex(scene, 'drop_pitch', 12, 12, (g) => {
-      g.fillStyle(PALETTE.pitchOrange);
-      g.fillRect(2, 1, 8, 10);
-      g.fillStyle(PALETTE.white);
-      g.fillRect(3, 3, 6, 1);
-      g.fillRect(3, 5, 5, 1);
-      g.fillStyle(PALETTE.ideaYellow);
-      g.fillRect(7, 7, 3, 3);
+    tex(scene, 'panel_bg', 440, 240, (g) => {
+      g.fillStyle(PALETTE.uiPanel, 0.95);
+      g.fillRoundedRect(0, 0, 440, 240, 8);
+      g.lineStyle(2, PALETTE.uiBorder, 0.5);
+      g.strokeRoundedRect(1, 1, 438, 238, 8);
     });
 
-    tex(scene, 'drop_project', 12, 12, (g) => {
-      g.fillStyle(PALETTE.projectPurple);
-      g.fillRect(1, 1, 10, 10);
-      g.fillStyle(PALETTE.white);
-      g.fillRect(3, 3, 2, 2);
-      g.fillRect(7, 3, 2, 2);
-      g.fillRect(3, 7, 6, 1);
-    });
-
-    tex(scene, 'drop_xp', 10, 10, (g) => {
-      g.fillStyle(PALETTE.xpOrange);
-      g.fillCircle(5, 5, 4);
-      g.fillStyle(PALETTE.xpGlow);
-      g.fillCircle(5, 4, 2);
-    });
-  }
-
-  static _generateDesk(scene) {
-    tex(scene, 'desk', 48, 36, (g) => {
-      g.fillStyle(PALETTE.deskLeg);
-      g.fillRect(4, 24, 4, 12);
-      g.fillRect(40, 24, 4, 12);
-      g.fillStyle(PALETTE.wood);
-      g.fillRect(0, 14, 48, 12);
-      g.fillStyle(PALETTE.deskTop);
-      g.fillRect(1, 15, 46, 10);
-      g.fillStyle(PALETTE.paper);
-      g.fillRect(6, 16, 10, 7);
-      g.fillStyle(PALETTE.paperLine);
-      g.fillRect(7, 18, 7, 1);
-      g.fillRect(7, 20, 5, 1);
-      g.fillStyle(PALETTE.metal);
-      g.fillRect(30, 16, 8, 6);
-      g.fillStyle(PALETTE.floor);
-      g.fillRect(31, 17, 6, 4);
-    });
-  }
-
-  static _generateUI(scene) {
-    tex(scene, 'ui_slot', 40, 40, (g) => {
-      g.fillStyle(PALETTE.uiPanel);
-      g.fillRect(0, 0, 40, 40);
-      g.lineStyle(1, PALETTE.uiBorder, 0.5);
-      g.strokeRect(1, 1, 38, 38);
-    });
-
-    tex(scene, 'ui_slot_highlight', 40, 40, (g) => {
-      g.fillStyle(0x3d3d54);
-      g.fillRect(0, 0, 40, 40);
-      g.lineStyle(2, PALETTE.uiBorder, 1);
-      g.strokeRect(1, 1, 38, 38);
-    });
-
-    tex(scene, 'btn_craft', 120, 32, (g) => {
-      g.fillStyle(PALETTE.uiBorder);
-      g.fillRoundedRect(0, 0, 120, 32, 4);
-    });
-
-    tex(scene, 'btn_craft_disabled', 120, 32, (g) => {
-      g.fillStyle(0x555566);
-      g.fillRoundedRect(0, 0, 120, 32, 4);
-    });
-
-    tex(scene, 'ui_xp_bg', 200, 8, (g) => {
-      g.fillStyle(0x222244);
-      g.fillRoundedRect(0, 0, 200, 8, 3);
-    });
-
-    tex(scene, 'ui_xp_fill', 200, 8, (g) => {
-      g.fillStyle(PALETTE.uiBorder);
-      g.fillRoundedRect(0, 0, 200, 8, 3);
-    });
-  }
-
-  static _generateDecorations(scene) {
-    tex(scene, 'deco_tree', 24, 32, (g) => {
-      g.fillStyle(PALETTE.woodDark);
-      g.fillRect(10, 18, 4, 14);
-      g.fillStyle(0x2d6b3f);
-      g.fillCircle(12, 12, 10);
-      g.fillStyle(0x3d8b4f);
-      g.fillCircle(12, 10, 7);
-    });
-
-    tex(scene, 'deco_bush', 20, 14, (g) => {
-      g.fillStyle(0x3d7a4e);
-      g.fillCircle(10, 8, 8);
-      g.fillStyle(0x4a9060);
-      g.fillCircle(10, 6, 5);
-    });
-
-    tex(scene, 'deco_flower', 10, 12, (g) => {
-      g.fillStyle(0x3d7a4e);
-      g.fillRect(4, 6, 2, 6);
-      g.fillStyle(0xff6688);
-      g.fillCircle(5, 4, 3);
-      g.fillStyle(0xffaacc);
-      g.fillCircle(5, 3, 1);
+    tex(scene, 'star_filled', 14, 14, (g) => {
+      g.fillStyle(PALETTE.coin);
+      g.fillTriangle(7, 0, 5, 5, 0, 5);
+      g.fillTriangle(7, 0, 9, 5, 14, 5);
+      g.fillTriangle(1, 9, 5, 5, 7, 12);
+      g.fillTriangle(13, 9, 9, 5, 7, 12);
+      g.fillTriangle(5, 5, 9, 5, 7, 12);
+      g.fillStyle(PALETTE.coinDark);
+      g.fillRect(6, 3, 2, 2);
     });
   }
 
@@ -417,63 +329,43 @@ export class TextureGenerator {
       g.fillCircle(4, 4, 2);
     });
 
-    tex(scene, 'swing_arc', 24, 24, (g) => {
-      g.lineStyle(3, PALETTE.white, 0.7);
-      g.beginPath();
-      g.arc(12, 12, 10, -1.2, 0.8, false);
-      g.strokePath();
+    tex(scene, 'particle_coin', 8, 8, (g) => {
+      g.fillStyle(PALETTE.coin);
+      g.fillCircle(4, 4, 3);
+      g.fillStyle(PALETTE.coinDark);
+      g.fillCircle(4, 4, 2);
+    });
+
+    tex(scene, 'particle_star', 10, 10, (g) => {
+      g.fillStyle(0xffdd44);
+      g.fillTriangle(5, 0, 4, 4, 0, 4);
+      g.fillTriangle(5, 0, 6, 4, 10, 4);
+      g.fillTriangle(1, 7, 4, 4, 5, 9);
+      g.fillTriangle(9, 7, 6, 4, 5, 9);
+      g.fillTriangle(4, 4, 6, 4, 5, 9);
     });
   }
 
-  static _generateLand(scene) {
-    tex(scene, 'land_locked', 32, 32, (g) => {
-      g.fillStyle(PALETTE.locked);
-      g.fillRect(0, 0, 32, 32);
-      g.fillStyle(PALETTE.lockedEdge);
-      g.fillRect(0, 0, 32, 1);
-      g.fillRect(0, 31, 32, 1);
-      g.fillRect(0, 0, 1, 32);
-      g.fillRect(31, 0, 1, 32);
-      g.fillRect(8, 8, 2, 2);
-      g.fillRect(22, 14, 2, 2);
-      g.fillRect(14, 22, 2, 2);
-    });
+  static _generateBackground(scene) {
+    tex(scene, 'bg_office', 960, 360, (g) => {
+      g.fillStyle(PALETTE.bgSky);
+      g.fillRect(0, 0, 960, 360);
 
-    tex(scene, 'land_buy_icon', 48, 48, (g) => {
-      g.fillStyle(PALETTE.coin);
-      g.fillCircle(24, 24, 16);
-      g.fillStyle(PALETTE.coinDark);
-      g.fillCircle(24, 24, 12);
-      g.fillStyle(PALETTE.coin);
-      g.fillRect(22, 16, 4, 16);
-      g.fillRect(18, 20, 12, 4);
-    });
+      g.fillStyle(PALETTE.bgWall);
+      g.fillRect(0, 40, 960, 280);
 
-    tex(scene, 'land_border', 384, 384, (g) => {
-      g.lineStyle(2, PALETTE.grassDark, 0.6);
-      g.strokeRect(1, 1, 382, 382);
-    });
-  }
+      g.fillStyle(0x333355);
+      for (let x = 0; x < 960; x += 80) {
+        g.fillRect(x, 60, 60, 80);
+        g.fillStyle(0x2a2a45);
+        g.fillRect(x + 4, 64, 52, 72);
+        g.fillStyle(0x333355);
+      }
 
-  static _generateStars(scene) {
-    tex(scene, 'star_filled', 14, 14, (g) => {
-      g.fillStyle(PALETTE.coin);
-      g.fillTriangle(7, 0, 5, 5, 0, 5);
-      g.fillTriangle(7, 0, 9, 5, 14, 5);
-      g.fillTriangle(1, 9, 5, 5, 7, 12);
-      g.fillTriangle(13, 9, 9, 5, 7, 12);
-      g.fillTriangle(5, 5, 9, 5, 7, 12);
-      g.fillStyle(PALETTE.coinDark);
-      g.fillRect(6, 3, 2, 2);
-    });
-
-    tex(scene, 'star_empty', 14, 14, (g) => {
-      g.fillStyle(0x444466);
-      g.fillTriangle(7, 0, 5, 5, 0, 5);
-      g.fillTriangle(7, 0, 9, 5, 14, 5);
-      g.fillTriangle(1, 9, 5, 5, 7, 12);
-      g.fillTriangle(13, 9, 9, 5, 7, 12);
-      g.fillTriangle(5, 5, 9, 5, 7, 12);
+      g.fillStyle(PALETTE.bgFloor);
+      g.fillRect(0, 320, 960, 40);
+      g.fillStyle(0x353550);
+      g.fillRect(0, 318, 960, 4);
     });
   }
 }
