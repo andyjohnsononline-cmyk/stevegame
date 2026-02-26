@@ -6,7 +6,7 @@ export const RESOURCE_TYPES = {
     nodeTexture: 'node_script_pile',
     dropTexture: 'drop_script',
     hitsToBreak: 3,
-    respawnTime: 8000,
+    respawnTime: 12000,
     dropMin: 1,
     dropMax: 2,
     gatherXP: 1,
@@ -18,7 +18,7 @@ export const RESOURCE_TYPES = {
     nodeTexture: 'node_idea_board',
     dropTexture: 'drop_idea',
     hitsToBreak: 2,
-    respawnTime: 6000,
+    respawnTime: 8000,
     dropMin: 1,
     dropMax: 2,
     gatherXP: 1,
@@ -30,7 +30,7 @@ export const RESOURCE_TYPES = {
     nodeTexture: 'node_coffee_machine',
     dropTexture: 'drop_coffee',
     hitsToBreak: 1,
-    respawnTime: 5000,
+    respawnTime: 6000,
     dropMin: 1,
     dropMax: 1,
     gatherXP: 1,
@@ -42,9 +42,9 @@ export const RESOURCE_TYPES = {
     nodeTexture: 'node_networking',
     dropTexture: 'drop_contact',
     hitsToBreak: 2,
-    respawnTime: 10000,
+    respawnTime: 15000,
     dropMin: 1,
-    dropMax: 1,
+    dropMax: 2,
     gatherXP: 2,
   },
   coin: {
@@ -113,17 +113,19 @@ function nodesForTile(gx, gy) {
   const dy = gy - cy;
 
   if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
-    if (dx === -1) return [...spread('idea', 4), ...spread('script', 2)];
-    if (dx === 1) return [...spread('coffee', 4), ...spread('contact', 2)];
-    if (dy === -1) return [...spread('script', 4), ...spread('idea', 2)];
-    if (dy === 1) return [...spread('contact', 4), ...spread('coffee', 2)];
-    return [...spread('script', 2), ...spread('idea', 2), ...spread('coffee', 2)];
+    if (dx === -1) return [...spread('idea', 5), ...spread('script', 3)];
+    if (dx === 1) return [...spread('coffee', 5), ...spread('contact', 3)];
+    if (dy === -1) return [...spread('script', 5), ...spread('idea', 3)];
+    if (dy === 1) return [...spread('contact', 5), ...spread('coffee', 3)];
+    return [...spread('script', 3), ...spread('idea', 3), ...spread('coffee', 2)];
   }
 
+  const dist = Math.abs(dx) + Math.abs(dy);
+  const bonus = Math.min(dist, 3);
   const types = ['script', 'idea', 'coffee', 'contact'];
   const primary = types[(Math.abs(dx * 3 + dy * 7)) % types.length];
   const secondary = types[(Math.abs(dx * 5 + dy * 11) + 1) % types.length];
-  return [...spread(primary, 5), ...spread(secondary, 3)];
+  return [...spread(primary, 5 + bonus), ...spread(secondary, 3 + bonus)];
 }
 
 export function getLandNodes(gx, gy) {
